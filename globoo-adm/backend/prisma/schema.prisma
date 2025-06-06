@@ -1,0 +1,545 @@
+// ============================================================================
+// PRISMA SCHEMA - SISTEMA DE GESTÃO EMPRESARIAL (OTIMIZADO)
+// Baseado no schema existente, otimizado para banco digital
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum Role {
+  MANAGER
+  ADMIN
+  RH  
+  FINANCE
+  ASSISTANT
+  EMPLOYEE
+}
+
+enum DocumentType {
+  RG
+  CPF
+  CNH
+  PASSPORT
+  WORK_CONTRACT
+  MEDICAL_CERTIFICATE
+  ADMISSION_DOCUMENT
+  DISMISSAL_DOCUMENT
+  CERTIFICATE
+  OTHER
+}
+
+enum ContractType {
+  CLT
+  PJ
+}
+
+enum WorkerStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  ON_VACATION
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+  OVERDUE
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PayslipStatus {
+  DRAFT
+  PROCESSED
+  PAID
+  CANCELLED
+}
+
+enum VisitorStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum ProviderStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+// ============================================================================
+// MÓDULO DE USUÁRIOS E AUTENTICAÇÃO
+// ============================================================================
+
+model User {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  password    String
+  role        Role
+  isActive    Boolean  @default(true)
+  avatar      String?
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userPermissions UserPermission[]
+  createdTemplates Template[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model Profile {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userPermissions UserPermission[]
+
+  @@index([name])
+  @@index([isActive])
+  @@map("profiles")
+}
+
+model UserPermission {
+  id          String   @id @default(uuid())
+  userId      String
+  profileId   String?
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, profileId])
+  @@index([userId])
+  @@map("user_permissions")
+}
+
+// ============================================================================
+// MÓDULO DE FUNCIONÁRIOS E RH
+// ============================================================================
+
+model Worker {
+  id            String       @id @default(uuid())
+  employeeCode  String       @unique
+  name          String
+  cpf           String       @unique
+  rg            String?
+  birthDate     DateTime
+  admissionDate DateTime
+  terminationDate DateTime?
+  salary        Decimal      @db.Decimal(10, 2)
+  allowance     Decimal?     @db.Decimal(10, 2)
+  phone         String
+  email         String       @unique
+  address       String
+  city          String?
+  state         String?
+  zipCode       String?
+  contractType  ContractType
+  position      String
+  department    String       @default("Geral")
+  status        WorkerStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  logs        Log[]
+  files       File[]
+  payslips    Payslip[]
+
+  @@index([employeeCode])
+  @@index([name])
+  @@index([cpf])
+  @@index([department])
+  @@index([status])
+  @@index([contractType])
+  @@map("workers")
+}
+
+model Log {
+  id          String    @id @default(uuid())
+  workerId    String
+  date        DateTime  @db.Date
+  entryTime   DateTime?
+  leaveTime   DateTime?
+  hoursWorked Decimal?  @db.Decimal(4, 2)
+  isAbsent    Boolean   @default(false)
+  absenceType String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@unique([workerId, date])
+  @@index([workerId])
+  @@index([date])
+  @@index([isAbsent])
+  @@map("worker_logs")
+}
+
+// ============================================================================
+// MÓDULO DE FOLHA DE PAGAMENTO
+// ============================================================================
+
+model Payroll {
+  id               String        @id @default(uuid())
+  month            Int
+  year             Int
+  description      String?
+  status           PayrollStatus @default(DRAFT)
+  processedAt      DateTime?
+  processedBy      String?
+  totalGrossSalary Decimal       @db.Decimal(12, 2) @default(0)
+  totalDeductions  Decimal       @db.Decimal(12, 2) @default(0)
+  totalBenefits    Decimal       @db.Decimal(12, 2) @default(0)
+  totalNetSalary   Decimal       @db.Decimal(12, 2) @default(0)
+  employeeCount    Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  payslips Payslip[]
+
+  @@unique([month, year])
+  @@index([status])
+  @@index([year, month])
+  @@map("payrolls")
+}
+
+model Payslip {
+  id              String        @id @default(uuid())
+  payrollId       String
+  workerId        String
+  employeeCode    String
+  employeeName    String
+  department      String
+  position        String
+  baseSalary      Decimal       @db.Decimal(10, 2)
+  totalBenefits   Decimal       @db.Decimal(10, 2) @default(0)
+  totalDeductions Decimal       @db.Decimal(10, 2) @default(0)
+  netSalary       Decimal       @db.Decimal(10, 2)
+  status          PayslipStatus @default(DRAFT)
+  paymentDate     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  payroll     Payroll     @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  worker      Worker      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  deductions  Deduction[]
+  benefits    Benefits[]
+
+  @@unique([payrollId, workerId])
+  @@index([payrollId])
+  @@index([workerId])
+  @@index([status])
+  @@index([paymentDate])
+  @@map("payslips")
+}
+
+model Deduction {
+  id          String  @id @default(uuid())
+  payslipId   String
+  code        String
+  type        String
+  description String?
+  percentage  Decimal? @db.Decimal(5, 4)
+  value       Decimal @db.Decimal(10, 2)
+  isRequired  Boolean @default(false)
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([payslipId])
+  @@index([code])
+  @@map("payslip_deductions")
+}
+
+model Benefits {
+  id          String  @id @default(uuid())
+  payslipId   String
+  code        String
+  type        String
+  description String?
+  value       Decimal @db.Decimal(10, 2)
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([payslipId])
+  @@index([code])
+  @@map("payslip_benefits")
+}
+
+// ============================================================================
+// MÓDULO FINANCEIRO
+// ============================================================================
+
+model Invoice {
+  id                String        @id @default(uuid())
+  number            String        @unique
+  issueDate         DateTime
+  dueDate           DateTime?
+  value             Decimal       @db.Decimal(12, 2)
+  description       String
+  status            InvoiceStatus @default(PENDING)
+  issuerName        String
+  issuerDocument    String?
+  issuerEmail       String?
+  recipientName     String
+  recipientDocument String?
+  recipientEmail    String?
+  paymentDate       DateTime?
+  paymentMethod     String?
+  notes             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  attachments InvoiceAttachment[]
+
+  @@index([number])
+  @@index([status])
+  @@index([issueDate])
+  @@index([dueDate])
+  @@index([value])
+  @@map("invoices")
+}
+
+model InvoiceAttachment {
+  id           String   @id @default(uuid())
+  invoiceId    String
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  content      Bytes
+  uploadDate   DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_attachments")
+}
+
+// ============================================================================
+// MÓDULO DE VISITANTES
+// ============================================================================
+
+model Visitor {
+  id              String        @id @default(uuid())
+  name            String
+  documentType    DocumentType  @default(RG)
+  documentNumber  String
+  phone           String
+  email           String?
+  company         String?
+  reason          String
+  hostName        String
+  hostDepartment  String?
+  scheduledEntry  DateTime?
+  scheduledExit   DateTime?
+  actualEntry     DateTime?
+  actualExit      DateTime?
+  status          VisitorStatus @default(EXPECTED)
+  temperature     Decimal?      @db.Decimal(4, 1)
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  photo VisitorPhoto?
+
+  @@index([name])
+  @@index([documentNumber])
+  @@index([status])
+  @@index([scheduledEntry])
+  @@index([actualEntry])
+  @@map("visitors")
+}
+
+model VisitorPhoto {
+  id           String    @id @default(uuid())
+  visitorId    String    @unique
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  content      Bytes
+  uploadDate   DateTime @default(now())
+
+  visitor Visitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@map("visitor_photos")
+}
+
+// ============================================================================
+// MÓDULO DE PRESTADORES DE SERVIÇOS
+// ============================================================================
+
+model Provider {
+  id              String         @id @default(uuid())
+  name            String
+  documentType    DocumentType   @default(RG)
+  documentNumber  String
+  phone           String
+  email           String?
+  company         String?
+  serviceType     String?
+  reason          String
+  hostName        String
+  hostDepartment  String?
+  scheduledEntry  DateTime?
+  scheduledExit   DateTime?
+  actualEntry     DateTime?
+  actualExit      DateTime?
+  status          ProviderStatus @default(EXPECTED)
+  contractNumber  String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  photo ProviderPhoto?
+
+  @@index([name])
+  @@index([documentNumber])
+  @@index([status])
+  @@index([scheduledEntry])
+  @@index([company])
+  @@map("providers")
+}
+
+model ProviderPhoto {
+  id           String    @id @default(uuid())
+  providerId   String    @unique
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  content      Bytes
+  uploadDate   DateTime @default(now())
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("provider_photos")
+}
+
+// ============================================================================
+// MÓDULO DE DOCUMENTOS
+// ============================================================================
+
+model File {
+  id           String       @id @default(uuid())
+  workerId     String
+  documentType DocumentType @default(OTHER)
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  content      Bytes
+  description  String?
+  category     String?
+  expiresAt    DateTime?
+  isActive     Boolean      @default(true)
+  uploadDate   DateTime     @default(now())
+
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([workerId])
+  @@index([documentType])
+  @@index([category])
+  @@index([expiresAt])
+  @@map("worker_files")
+}
+
+// ============================================================================
+// MÓDULO DE MODELO DE DOCUMENTOS
+// ============================================================================
+
+model Template {
+  id          String       @id @default(uuid())
+  name        String
+  type        DocumentType @default(OTHER)
+  category    String       @default("GENERAL")
+  description String
+  version     String       @default("1.0")
+  createdBy   String
+  format      String
+  fileData    Bytes
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([name])
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("document_templates")
+}
+
+// ============================================================================
+// CONFIGURAÇÕES DO SISTEMA
+// ============================================================================
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String   @default("GENERAL")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([key])
+  @@map("system_configs")
+}
+
+// ============================================================================
+// LOG DE ATIVIDADES
+// ============================================================================
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entityType String?
+  entityId  String?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("activity_logs")
+}

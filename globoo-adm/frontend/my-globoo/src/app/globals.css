@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Teste para verificar se as classes dark estão funcionando */
+
+@custom-variant dark (&:is(.dark *));
+
+/* Estilo para barra de rolagem no tema escuro */
+.dark .side-nav nav::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark .side-nav nav::-webkit-scrollbar-track {
+  background: #1f2937; /* Cor de fundo escura para o tema dark */
+}
+
+.dark .side-nav nav::-webkit-scrollbar-thumb {
+  background-color: #4b5563; /* Cor do "polegar" da barra de rolagem */
+  border-radius: 6px;
+}
+
+.dark .side-nav nav::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280; /* Cor ao passar o mouse */
+}
+
+/* Estilo para barra de rolagem no tema claro */
+.side-nav nav::-webkit-scrollbar {
+  width: 8px;
+}
+
+.side-nav nav::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.side-nav nav::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 6px;
+}
+
+.side-nav nav::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+
+

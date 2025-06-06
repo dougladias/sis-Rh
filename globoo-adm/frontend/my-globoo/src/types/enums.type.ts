@@ -1,0 +1,32 @@
+export enum ContractType {
+  CLT = "CLT",
+  PJ = "PJ"
+}
+
+export enum WorkerStatus {
+  ACTIVE = "ACTIVE",
+  INACTIVE = "INACTIVE",
+  TERMINATED = "TERMINATED",
+  ON_VACATION = "ON_VACATION"
+}
+
+export enum DocumentType {
+  RG = "RG",
+  CPF = "CPF",
+  CNH = "CNH",
+  PASSPORT = "PASSPORT",
+  WORK_CONTRACT = "WORK_CONTRACT",
+  MEDICAL_CERTIFICATE = "MEDICAL_CERTIFICATE",
+  ADMISSION_DOCUMENT = "ADMISSION_DOCUMENT",
+  DISMISSAL_DOCUMENT = "DISMISSAL_DOCUMENT",
+  CERTIFICATE = "CERTIFICATE",
+  OTHER = "OTHER"
+}
+
+export enum InvoiceStatus {
+  PENDING = "PENDING",
+  PAID = "PAID",
+  CANCELLED = "CANCELLED",
+  OVERDUE = "OVERDUE"
+}
+
