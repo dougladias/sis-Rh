@@ -58,7 +58,7 @@ class UpdateVisitorController {
         success: true,
         visitor
       });
-    } catch (error) {
+    } catch (error: any) {
       return res.status(error.statusCode || 400).json({
         success: false,
         message: error.message || "Erro ao atualizar visitante"

@@ -42,7 +42,7 @@ router.use("/payslips", isAuthenticated, payslipRouter);
 router.use("/documents", isAuthenticated, documentRouter);
 router.use("/templates", isAuthenticated, templateRouter);
 router.use('/invoices', isAuthenticated, invoiceRouter);
-router.use('/visitors', isAuthenticated, invoiceRouter);
+router.use('/visitors', isAuthenticated, visitorRouter);
 
 
 

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { GetVisitorByIdService } from "../../services/visitor/GetVisitorById.service";
+import { GetVisitorByIdService } from "../../services/visitor/IdVisitor.service";
 
 class GetVisitorByIdController {
   async handle(req: Request, res: Response) {
@@ -21,7 +21,7 @@ class GetVisitorByIdController {
         success: true,
         visitor
       });
-    } catch (error) {
+    } catch (error: any) {
       return res.status(error.statusCode || 400).json({
         success: false,
         message: error.message || "Erro ao buscar visitante"

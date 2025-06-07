@@ -87,7 +87,7 @@ class ListInvoiceService {
       };
     }
 
-    // Buscar faturas com paginação
+    // Buscar faturas com paginação - CORRIGIDO: Incluindo attachments
     const invoices = await prismaClient.invoice.findMany({
       where,
       select: {
@@ -99,14 +99,25 @@ class ListInvoiceService {
         description: true,
         status: true,
         issuerName: true,
+        issuerDocument: true,
+        issuerEmail: true,
         recipientName: true,
+        recipientDocument: true,
+        recipientEmail: true,
         paymentDate: true,
         paymentMethod: true,
+        notes: true,
         createdAt: true,
         updatedAt: true,
-        _count: {
+        // ✅ CORRIGIDO: Incluindo attachments na listagem
+        attachments: {
           select: {
-            attachments: true
+            id: true,
+            filename: true,
+            originalName: true,
+            mimetype: true,
+            size: true,
+            uploadDate: true
           }
         }
       },
