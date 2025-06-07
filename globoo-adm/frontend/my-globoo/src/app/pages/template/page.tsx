@@ -22,10 +22,38 @@ import {
   getTemplateViewUrl,
 } from '@/server/tamplate/template.actions';
 import { Template, TemplateFilters, UpdateTemplateDTO } from '@/types/template.type';
-import { DocumentType } from '@/types/enums.type';
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+
+// Tipos específicos para templates com rótulos amigáveis
+const TEMPLATE_DOCUMENT_TYPES = {
+  'RG': 'RG',
+  'CPF': 'CPF', 
+  'CNH': 'CNH',
+  'PASSPORT': 'Passaporte',
+  'WORK_CONTRACT': 'Contrato de Trabalho',
+  'WORKER_CONTRACT': 'Contrato de Funcionário',
+  'SERVICE_CONTRACT': 'Contrato de Serviço',
+  'NDA': 'Acordo de Confidencialidade',
+  'INVOICE': 'Fatura',
+  'RECEIPT': 'Recibo',
+  'REPORT': 'Relatório',
+  'MEDICAL_CERTIFICATE': 'Atestado Médico',
+  'ADMISSION_DOCUMENT': 'Documento de Admissão',
+  'DISMISSAL_DOCUMENT': 'Documento de Demissão',
+  'CERTIFICATE': 'Certificado',
+  'PROPOSAL': 'Proposta',
+  'MEMO': 'Memorando',
+  'LETTER': 'Carta',
+  'FORM': 'Formulário',
+  'POLICY': 'Política',
+  'PRESENTATION': 'Apresentação',
+  'OTHER': 'Outro'
+} as const;
+
+// Tipo derivado das chaves do objeto
+type TemplateDocumentType = keyof typeof TEMPLATE_DOCUMENT_TYPES;
 
 // Componente de Alerta personalizado para evitar conflitos com o componente do shadcn
 type AlertProps = {
@@ -81,24 +109,7 @@ const formatDate = (date: Date | string | null | undefined): string => {
 
 // Função para obter descrições amigáveis para os tipos de documento
 const getDocumentTypeLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    'WORKER_CONTRACT': 'Contrato de Funcionário',
-    'SERVICE_CONTRACT': 'Contrato de Serviço',
-    'NDA': 'Acordo de Confidencialidade',
-    'INVOICE': 'Fatura',
-    'RECEIPT': 'Recibo',
-    'REPORT': 'Relatório',
-    'CERTIFICATE': 'Certificado',
-    'PROPOSAL': 'Proposta',
-    'MEMO': 'Memorando',
-    'LETTER': 'Carta',
-    'FORM': 'Formulário',
-    'POLICY': 'Política',
-    'PRESENTATION': 'Apresentação',
-    'OTHER': 'Outro'
-  };
-  
-  return labels[type] || type;
+  return TEMPLATE_DOCUMENT_TYPES[type as TemplateDocumentType] || type;
 };
 
 // Adicione esta função junto com a getDocumentTypeLabel
@@ -158,17 +169,17 @@ const TemplatesPage: React.FC = () => {
     pages: 1
   });
   
-  // Estado do formulário - Corrigindo o tipo DocumentType
+  // Estado do formulário
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
     category: string;
-    type: string; // Mudando para string para evitar conflito de tipos
+    type: string;
   }>({
     name: '',
     description: '',
     category: 'GENERAL',
-    type: DocumentType.OTHER.toString(), // Converter para string
+    type: 'OTHER',
   });
   const [file, setFile] = useState<File | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -324,7 +335,7 @@ const TemplatesPage: React.FC = () => {
       name: '',
       description: '',
       category: 'GENERAL',
-      type: DocumentType.OTHER.toString(), // Converter para string
+      type: 'OTHER',
     });
     setFile(null);
     setFormErrors({});
@@ -340,7 +351,6 @@ const TemplatesPage: React.FC = () => {
           name: currentTemplate.name || '',
           description: currentTemplate.description || '',
           category: currentTemplate.category || 'GENERAL',
-          // Converter DocumentType para string
           type: String(currentTemplate.type),
         });
         setFormErrors({});
@@ -396,7 +406,7 @@ const TemplatesPage: React.FC = () => {
       name: '',
       description: '',
       category: 'GENERAL',
-      type: DocumentType.OTHER.toString(), // Converter para string
+      type: 'OTHER',
     });
     setFile(null);
     setFormErrors({});
@@ -419,7 +429,7 @@ const TemplatesPage: React.FC = () => {
         formDataObj.append('name', formData.name);
         formDataObj.append('description', formData.description);
         formDataObj.append('category', formData.category);
-        formDataObj.append('type', formData.type); // Enviar o tipo diretamente como está (já é string)
+        formDataObj.append('type', formData.type);
         
         if (file) {
           formDataObj.append('file', file);
@@ -440,14 +450,10 @@ const TemplatesPage: React.FC = () => {
         // Modo de edição
         if (!currentTemplate) return;
         
-        // Verificação mais segura (opcional)
-        const isValidDocType = (type: string): type is DocumentType => {
-          return Object.values(DocumentType).includes(type as DocumentType);
-        };
-
-        const typeValue = isValidDocType(formData.type) 
+        // Verificação se o tipo é válido
+        const typeValue = formData.type in TEMPLATE_DOCUMENT_TYPES 
           ? formData.type 
-          : DocumentType.OTHER;
+          : 'OTHER';
 
         const updateData: UpdateTemplateDTO = {
           id: currentTemplate.id,
@@ -814,9 +820,9 @@ const TemplatesPage: React.FC = () => {
                   className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400"
                   required
                 >
-                  {Object.entries(DocumentType).map(([, value]) => (
+                  {Object.entries(TEMPLATE_DOCUMENT_TYPES).map(([value, label]) => (
                     <option key={value} value={value}>
-                      {getDocumentTypeLabel(value)}
+                      {label}
                     </option>
                   ))}
                 </select>
@@ -958,8 +964,7 @@ const TemplatesPage: React.FC = () => {
           <dl className="sm:divide-y sm:divide-stone-200 sm:dark:divide-gray-700">
             <InfoItem label="Nome" value={currentTemplate.name} />
             <InfoItem label="Descrição" value={currentTemplate.description || "-"} />
-            <InfoItem label="Categoria" value={currentTemplate.category || "-"} />
-            {/* Converter DocumentType para string */}
+            <InfoItem label="Categoria" value={getCategoryLabel(currentTemplate.category || "GENERAL")} />
             <InfoItem label="Tipo" value={getDocumentTypeLabel(String(currentTemplate.type))} />
             <InfoItem label="Formato" value={currentTemplate.format?.toUpperCase() || "-"} />
             <InfoItem label="Tamanho" value={formatBytes(currentTemplate.fileSize || 0)} />

@@ -31,10 +31,22 @@ enum DocumentType {
   CNH
   PASSPORT
   WORK_CONTRACT
+  WORKER_CONTRACT      
+  SERVICE_CONTRACT     
+  NDA                  
+  INVOICE              
+  RECEIPT              
+  REPORT               
   MEDICAL_CERTIFICATE
   ADMISSION_DOCUMENT
   DISMISSAL_DOCUMENT
   CERTIFICATE
+  PROPOSAL             
+  MEMO                 
+  LETTER               
+  FORM                 
+  POLICY               
+  PRESENTATION         
   OTHER
 }
 
