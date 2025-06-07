@@ -15,6 +15,7 @@ import {
   VisitorStatus,
   VisitorStats
 } from '@/types/visitor.type';
+import { DocumentType } from '@/types/enums.type';
 
 /**
  * Busca visitantes com filtros opcionais
@@ -123,6 +124,81 @@ export async function handleCreateVisitor(data: CreateVisitorRequest): Promise<V
     };
   } catch (error) {
     console.error('Erro ao criar visitante:', error);
+    return { 
+      success: false,
+      message: error instanceof Error ? error.message : "Erro inesperado ao cadastrar visitante"
+    };
+  }
+}
+
+/**
+ * Cria um novo visitante com foto - usando fetch nativo para FormData
+ */
+export async function handleCreateVisitorWithPhoto(formData: FormData): Promise<VisitorApiResponse> {
+  try {
+    const token = await getAuthToken();
+    
+    if (!token) {
+      return { success: false, message: "Não autorizado" };
+    }
+
+    // Validações básicas
+    const name = formData.get('name') as string;
+    const documentNumber = formData.get('documentNumber') as string;
+    const phone = formData.get('phone') as string;
+    const reason = formData.get('reason') as string;
+    const hostName = formData.get('hostName') as string;
+    
+    if (!name || !documentNumber || !phone || !reason || !hostName) {
+      return { success: false, message: "Campos obrigatórios não preenchidos" };
+    }
+
+    // Primeiro, criar o visitante
+    const visitorData: CreateVisitorRequest = {
+      name,
+      documentType: (formData.get('documentType') as DocumentType) || DocumentType.RG,
+      documentNumber,
+      phone,
+      email: (formData.get('email') as string) || undefined,
+      company: (formData.get('company') as string) || undefined,
+      reason,
+      hostName,
+      notes: (formData.get('notes') as string) || undefined,
+      status: VisitorStatus.EXPECTED
+    };
+
+    const createResult = await handleCreateVisitor(visitorData);
+    
+    if (!createResult.success || !createResult.visitor) {
+      return createResult;
+    }
+
+    // Se há foto, fazer upload
+    const photoFile = formData.get('photo') as File;
+    if (photoFile && photoFile.size > 0) {
+      const photoFormData = new FormData();
+      photoFormData.append('photo', photoFile);
+      
+      const photoResult = await handleUploadVisitorPhoto(createResult.visitor.id, photoFormData);
+      
+      if (!photoResult.success) {
+        // Visitante criado mas foto falhou - não é erro crítico
+        console.warn('Visitante criado mas erro no upload da foto:', photoResult.error);
+        return {
+          success: true,
+          visitor: createResult.visitor,
+          message: "Visitante cadastrado com sucesso! (Erro no upload da foto)"
+        };
+      }
+    }
+    
+    return {
+      success: true,
+      visitor: createResult.visitor,
+      message: "Visitante cadastrado com sucesso!"
+    };
+  } catch (error) {
+    console.error('Erro ao criar visitante com foto:', error);
     return { 
       success: false,
       message: error instanceof Error ? error.message : "Erro inesperado ao cadastrar visitante"

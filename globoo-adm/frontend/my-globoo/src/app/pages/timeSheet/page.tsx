@@ -946,6 +946,32 @@ const TimeSheetPage: React.FC = () => {
     }
   }, []);
 
+  // Efeito para verificar o tema
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const isDark = savedTheme === 'dark' ||
+      (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
+    const handleThemeChange = (e: CustomEvent) => {
+      console.log("TimeSheet page: Tema alterado para", e.detail?.theme);
+      const newTheme = e.detail?.theme || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+      if (newTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    window.addEventListener('themeToggled', handleThemeChange as EventListener);
+    return () => window.removeEventListener('themeToggled', handleThemeChange as EventListener);
+  }, []);
+
   return (
     <motion.div
       className="p-6 min-h-screen bg-stone-50 dark:bg-gray-950"
@@ -1041,13 +1067,13 @@ const TimeSheetPage: React.FC = () => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-gray-900 divide-y divide-stone-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-stone-500 dark:text-gray-400">
-                    <div className="flex flex-col items-center justify-center">
+                  <td colSpan={5} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center">
                       <motion.div
-                        className="w-12 h-12 mb-3 border-4 border-stone-200 dark:border-gray-700 rounded-full"
+                        className="w-8 h-8 border-4 border-gray-200 rounded-full"
                         style={{ borderTopColor: "#22d3ee" }}
                         animate={{ rotate: 360 }}
                         transition={{

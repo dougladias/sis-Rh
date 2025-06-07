@@ -12,6 +12,7 @@ import { documentRouter } from './document/document.routes';
 import { templateRouter } from './template/template.routes';
 import { invoiceRouter } from './invoice/invoice.routes';
 import { visitorRouter } from './visitor/visitor.routes';
+import { providerRouter } from './provider/provider.routes';
 
 // Criação do roteador principal da API
 const router = Router();
@@ -43,7 +44,7 @@ router.use("/documents", isAuthenticated, documentRouter);
 router.use("/templates", isAuthenticated, templateRouter);
 router.use('/invoices', isAuthenticated, invoiceRouter);
 router.use('/visitors', isAuthenticated, visitorRouter);
-
+router.use('/providers', isAuthenticated, providerRouter);
 
 
 

@@ -35,7 +35,6 @@ export enum DocumentType {
   OTHER = "OTHER"
 }
 
-
 export enum InvoiceStatus {
   PENDING = "PENDING",
   PAID = "PAID",
@@ -43,3 +42,16 @@ export enum InvoiceStatus {
   OVERDUE = "OVERDUE"
 }
 
+export enum VisitorStatus {
+  EXPECTED = 'EXPECTED',
+  CHECKED_IN = 'CHECKED_IN',
+  CHECKED_OUT = 'CHECKED_OUT',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum ProviderStatus {
+  EXPECTED = 'EXPECTED',
+  CHECKED_IN = 'CHECKED_IN',
+  CHECKED_OUT = 'CHECKED_OUT',
+  CANCELLED = 'CANCELLED'
+}
