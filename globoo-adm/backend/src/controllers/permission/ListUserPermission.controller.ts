@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { ListUserPermissionService } from "../../services/userPermission/ListUserPermission.service";
+import { ListUserPermissionService } from "../../services/permission/ListUserPermission.service";
 
 class ListUserPermissionController {
     async handle(req: Request, res: Response) {

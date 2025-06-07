@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { userRouter } from './user/user.routes';
 import { isAuthenticated } from '../middlewares/isAuthenticated.middleware';
 import { profileRouter } from './profile/profile.routes';
-import { userPermissionRouter } from './userPermission/userPermission.routes';
+import { permissionRouter } from './permission/permission.routes';
 import { workerRouter } from './worker/worker.routes';
 import { timeSheetRouter } from './timeSheet/timeSheet.routes';
 import { payrollRouter } from './payroll/payroll.routes';
@@ -33,9 +33,8 @@ router.use('/me', isAuthenticated, (req, res, next) => {
 
 // Rotas Privadas
 router.use('/users', userRouter);
-router.use('/me', isAuthenticated, authRoutes);
 router.use('/profiles', isAuthenticated, profileRouter);
-router.use('/permissions', isAuthenticated, userPermissionRouter);
+router.use('/permissions', isAuthenticated, permissionRouter);
 router.use("/workers", isAuthenticated, workerRouter);
 router.use("/timeSheets", isAuthenticated, timeSheetRouter);
 router.use("/payrolls", isAuthenticated, payrollRouter);

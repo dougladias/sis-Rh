@@ -10,4 +10,5 @@ authRoutes.post('/', new AuthController().handle);
 // Rota para obter dados do usuário logado 
 authRoutes.get('/', new DetailUserController().handle);
 
+
 export { authRoutes };

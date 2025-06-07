@@ -45,7 +45,7 @@ export function isAuthenticated(
     ) as Payload;  
 
     // Recuperar o id do token e colocar dentro da request
-    request.user_id = sub;
+    request.user = { id: sub, role: "user" }; 
     
     // Se o token for válido, chama a próxima função middleware
     return next();

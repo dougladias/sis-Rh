@@ -14,15 +14,7 @@ class ViewDocumentController {
         id, 
         includeContent: true 
       });
-
-      console.log('Documento a ser visualizado:', {
-        id: document.id,
-        mimetype: document.mimetype,
-        originalName: document.originalName,
-        size: document.size,
-        contentType: typeof document.content,
-        hasContent: !!document.content
-      });
+    
 
       // Verificar se o conteúdo existe
       if (!document.content) {

@@ -11,9 +11,7 @@ class ViewInvoiceAttachmentController {
           success: false,
           message: "ID da fatura e do anexo são obrigatórios"
         });
-      }
-
-      console.log(`Visualizando anexo - Invoice ID: ${invoiceId}, Attachment ID: ${attachmentId}`);
+      }      
 
       const viewInvoiceAttachmentService = new ViewInvoiceAttachmentService();
       const attachment = await viewInvoiceAttachmentService.execute({

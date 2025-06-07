@@ -24,17 +24,7 @@ export const uploadMiddleware = (req: any, res: any, next: any) => {
         success: false,
         message: 'Erro no upload do arquivo'
       });
-    }
-
-    // Log para debug
-    console.log('=== UPLOAD DEBUG ===');
-    console.log('Body:', req.body);
-    console.log('File:', req.file ? {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size
-    } : 'Nenhum arquivo');
-    console.log('==================');
+    }   
 
     // Converter para o formato esperado pelo controller
     if (req.file) {

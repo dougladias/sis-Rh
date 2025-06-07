@@ -1,6 +1,6 @@
 import prismaClient from "../../prisma";
 import { compare } from "bcryptjs"
-import { sign } from "jsonwebtoken";
+import jwt from 'jsonwebtoken';
 
 
 // AuthUserService é responsável por autenticar um usuário com email e senha
@@ -43,12 +43,13 @@ class AuthService {
         }
 
         // Gerar um Token JWT
-        const token = sign(
+        const token = jwt.sign(
             {
                 name: user.name,
-                email: user.email
+                email: user.email,
+                role: user.role 
             },
-             process.env.JWT_SECRET as string,
+             process.env.JWT_SECRET || 'default_secret',
              {
                 subject: user.id,
                 expiresIn: "1d"

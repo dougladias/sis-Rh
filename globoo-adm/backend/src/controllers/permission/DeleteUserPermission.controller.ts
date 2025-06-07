@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { DeleteUserPermissionService } from "../../services/userPermission/DeleteUserPermission.service";
+import { DeleteUserPermissionService } from "../../services/permission/DeleteUserPermission.service";
 
 class DeleteUserPermissionController {
     async handle(req: Request, res: Response) {

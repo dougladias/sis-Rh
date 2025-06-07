@@ -22,15 +22,6 @@ class ViewTemplateController {
           message: "Arquivo não encontrado no template"
         });
       }
-
-      console.log('Template a ser visualizado:', {
-        id: template.id,
-        mimetype: template.mimeType,
-        fileName: template.fileName,
-        size: template.fileSize,
-        contentType: typeof template.fileData
-      });
-
       // Configurar cabeçalhos para visualização inline
       res.setHeader('Content-Type', template.mimeType);
       res.setHeader('Content-Disposition', `inline; filename=${template.fileName}`);

@@ -3,7 +3,8 @@ import { ListUserController } from '../../controllers/user/ListUser.controller';
 import { CreateUserController } from "../../controllers/user/CreateUser.controller";
 import { UpdateUserController } from '../../controllers/user/UpdateUser.controller';
 import { DeleteUserController } from '../../controllers/user/DeleteUser.controller';
-
+import { DetailUserController } from '../../controllers/user/DetailUser.controller';
+import { isAuthenticated } from "../../middlewares/isAuthenticated.middleware";
 
 const userRouter = Router();
 
@@ -12,6 +13,7 @@ userRouter.get('/', new ListUserController().handle);
 userRouter.post('/', new CreateUserController().handle);
 userRouter.put('/:id', new UpdateUserController().handle);
 userRouter.delete('/:id', new DeleteUserController().handle);
+userRouter.get('/me', isAuthenticated, new DetailUserController().handle);
 
 
 export { userRouter };
