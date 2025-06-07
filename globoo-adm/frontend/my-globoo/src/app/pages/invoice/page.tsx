@@ -24,7 +24,6 @@ import {
   handleUpdateInvoice,
   handleDeleteInvoice,
   handleUploadInvoiceAttachment,
-  getInvoiceAttachmentViewUrl
 } from '@/server/invoice/invoice.actions';
 
 import { Invoice, InvoiceFilters, CreateInvoiceDTO, UpdateInvoiceDTO } from '@/types/invoice.type';
@@ -386,6 +385,38 @@ export default function InvoicePage() {
     setActiveSection('details');
   };
 
+  // Visualizar anexo da fatura em nova aba - VERSÃO SIMPLIFICADA SEGUINDO O PADRÃO DO DOCUMENT
+  const handleViewInvoiceAttachmentInNewTab = (invoiceId: string, attachmentId: string) => {
+    if (!invoiceId || !attachmentId) {
+      toast.error("Dados do anexo inválidos");
+      return;
+    }
+
+    // Obter o token do cookie (mesmo método que funciona no Document)
+    const cookies = document.cookie.split(';');
+    let token = null;
+    
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.startsWith('session=')) {
+        token = cookie.substring('session='.length);
+        break;
+      }
+    }
+    
+    if (!token) {
+      toast.error("Você precisa estar autenticado");
+      return;
+    }
+    
+    // Construir URL diretamente como no Document
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const viewUrl = `${baseUrl}/invoices/${invoiceId}/attachments/${attachmentId}/view?token=${token}`;
+    
+    // Abrir em nova aba
+    window.open(viewUrl, '_blank');
+  };
+
   // Função para enviar o formulário (criar/editar fatura)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -507,62 +538,6 @@ export default function InvoicePage() {
       }
     }
     return '';
-  };
-
-  // Visualizar anexo da fatura em nova aba com token
-  const handleViewInvoiceAttachmentInNewTab = async (invoiceId: string, attachmentId: string) => {
-    try {
-      console.log("Visualizando anexo:", invoiceId, attachmentId);
-      
-      if (!invoiceId || !attachmentId) {
-        toast.error("Dados do anexo inválidos");
-        return;
-      }
-      
-      // Obter o token do cookie
-      const cookies = document.cookie.split(';');
-      let token = null;
-      
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        if (cookie.startsWith('session=')) {
-          token = cookie.substring('session='.length);
-          break;
-        }
-      }
-      
-      console.log("Token encontrado:", token ? "Sim" : "Não");
-      
-      if (!token) {
-        toast.error("Você precisa estar autenticado");
-        return;
-      }
-      
-      // Usar a função importada para obter a URL de visualização
-      const viewUrl = await getInvoiceAttachmentViewUrl(invoiceId, attachmentId);
-      
-      // Adicionar o token como parâmetro de query se não estiver presente
-      const urlWithToken = viewUrl.includes('token=') 
-        ? viewUrl 
-        : `${viewUrl}${viewUrl.includes('?') ? '&' : '?'}token=${token}`;
-      
-      console.log("URL de visualização:", urlWithToken);
-      
-      // Abrir em nova aba
-      window.open(urlWithToken, '_blank', 'noopener,noreferrer');
-      
-      // Caso o window.open seja bloqueado, oferecer um link clicável
-      toast.success("Link de visualização aberto", {
-        description: "Se o documento não abrir automaticamente, verifique se há bloqueio de pop-ups.",
-        action: {
-          label: "Tentar Novamente",
-          onClick: () => window.open(urlWithToken, '_blank', 'noopener,noreferrer')
-        }
-      });
-    } catch (err) {
-      console.error("Erro ao abrir anexo:", err);
-      toast.error("Erro ao abrir o anexo");
-    }
   };
 
   // Renderização condicional das seções
@@ -714,15 +689,13 @@ export default function InvoicePage() {
                           >
                             <EyeIcon className="h-5 w-5" />
                           </motion.button>
-                          {/* Novo botão para visualizar anexo */}
+                          {/* Botão para visualizar anexo - VERSÃO SIMPLIFICADA */}
                           <motion.button
                             onClick={() => {
-                              console.log("Botão clicado");
-                              console.log("Anexos:", invoice.attachments);
                               if (invoice.attachments && invoice.attachments.length > 0) {
                                 handleViewInvoiceAttachmentInNewTab(invoice.id, invoice.attachments[0].id);
                               } else {
-                                toast.error("Essa fatura não possui anexos");
+                                toast.error("Esta fatura não possui anexos");
                               }
                             }}
                             className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-300"
@@ -1260,7 +1233,7 @@ export default function InvoicePage() {
               </dd>
             </div>
 
-            {/* Anexos - Apenas mostramos a informação sem os botões */}
+            {/* Anexos */}
             {currentInvoice.attachments && currentInvoice.attachments.length > 0 && (
               <div className="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 sm:py-5">
                 <dt className="text-sm font-medium text-stone-500 dark:text-gray-400">Anexos</dt>
@@ -1269,12 +1242,23 @@ export default function InvoicePage() {
                     {currentInvoice.attachments.map(attachment => (
                       <div
                         key={attachment.id}
-                        className="bg-stone-50 dark:bg-gray-700 p-3 rounded"
+                        className="bg-stone-50 dark:bg-gray-700 p-3 rounded flex justify-between items-center"
                       >
-                        <p>{attachment.originalName}</p>
-                        <p className="text-sm text-stone-500 dark:text-gray-400">
-                          {formatBytes(attachment.size)} | {attachment.mimetype} | {formatDate(attachment.uploadDate)}
-                        </p>
+                        <div>
+                          <p className="font-medium">{attachment.originalName}</p>
+                          <p className="text-sm text-stone-500 dark:text-gray-400">
+                            {formatBytes(attachment.size)} | {attachment.mimetype} | {formatDate(attachment.uploadDate)}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => handleViewInvoiceAttachmentInNewTab(currentInvoice.id, attachment.id)}
+                          variant="outline"
+                          size="sm"
+                          className="dark:border-gray-600 dark:text-gray-300"
+                        >
+                          <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                          Visualizar
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -1404,7 +1388,7 @@ export default function InvoicePage() {
         >
           <div className="flex flex-col items-center mb-4">
             <motion.div
-              className="bg-red-100 rounded-full p-3 text-red-500 mb-4"
+              className="bg-red-100 dark:bg-red-900/30 rounded-full p-3 text-red-500 dark:text-red-400 mb-4"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", damping: 10 }}
