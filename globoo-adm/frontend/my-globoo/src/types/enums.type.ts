@@ -42,6 +42,20 @@ export enum InvoiceStatus {
   OVERDUE = "OVERDUE"
 }
 
+export enum PayrollStatus {
+  DRAFT = "DRAFT",
+  PROCESSING = "PROCESSING", 
+  COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED"
+}
+
+export enum PayslipStatus {
+  DRAFT = "DRAFT",
+  PROCESSED = "PROCESSED",
+  PAID = "PAID",
+  CANCELLED = "CANCELLED"
+}
+
 export enum VisitorStatus {
   EXPECTED = 'EXPECTED',
   CHECKED_IN = 'CHECKED_IN',

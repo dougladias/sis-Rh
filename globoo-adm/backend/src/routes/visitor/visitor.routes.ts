@@ -9,7 +9,6 @@ import { AddVisitorPhotoController } from "../../controllers/visitor/AddVisitorP
 import { DeleteVisitorPhotoController } from "../../controllers/visitor/DeleteVisitorPhoto.controller";
 import { uploadMiddleware } from "../../middlewares/upload.middleware";
 
-
 const visitorRouter = Router();
 
 // Rotas para visitantes

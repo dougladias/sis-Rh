@@ -7,6 +7,9 @@ import { GetPayslipController } from "../../controllers/payslip/IdPayslip.contro
 import { UpdatePayslipController } from "../../controllers/payslip/UpdatePayslip.controller";
 import { DeletePayslipController } from "../../controllers/payslip/DeletePayslip.controller";
 
+// Controllers para PDF
+import { GeneratePayslipPDFController, ViewPayslipPDFController } from "../../controllers/payslip/ViewPayslipPDF.controller";
+
 // Controllers para Deduções
 import { AddDeductionController } from "../../controllers/deduction/AddDeduction.controller";
 import { ListDeductionController } from "../../controllers/deduction/ListDeduction.controller";
@@ -30,6 +33,10 @@ payslipRouter.get("/", new ListPayslipController().handle);
 payslipRouter.get("/:id", new GetPayslipController().handle);
 payslipRouter.put("/:id", new UpdatePayslipController().handle);
 payslipRouter.delete("/:id", new DeletePayslipController().handle);
+
+// Rotas para PDF 
+payslipRouter.get("/:id/pdf", new ViewPayslipPDFController().handle);
+payslipRouter.get("/:id/download", new GeneratePayslipPDFController().handle);
 
 // Rotas para deduções
 payslipRouter.post("/:payslipId/deductions", new AddDeductionController().handle);

@@ -9,10 +9,10 @@ import { isAuthenticated } from "../../middlewares/isAuthenticated.middleware";
 const userRouter = Router();
 
 // Rotas para o usuário
-userRouter.get('/', new ListUserController().handle);
+userRouter.get('/', isAuthenticated, new ListUserController().handle);
 userRouter.post('/', new CreateUserController().handle);
-userRouter.put('/:id', new UpdateUserController().handle);
-userRouter.delete('/:id', new DeleteUserController().handle);
+userRouter.put('/:id', isAuthenticated, new UpdateUserController().handle);
+userRouter.delete('/:id', isAuthenticated, new DeleteUserController().handle);
 userRouter.get('/me', isAuthenticated, new DetailUserController().handle);
 
 

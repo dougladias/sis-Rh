@@ -495,16 +495,16 @@ export default function DashboardPage() {
         return currentPermissions.permissions.includes(permission);
       };
 
-      // Buscar dados baseado nas permissões
+      // Buscar dados baseado nas permissões - CORRIGIR as permissões aqui
       const promises: Promise<unknown>[] = [];
-      
-      if (checkPermission('workers:read')) {
+     
+      if (checkPermission('worker:read')) {
         promises.push(getWorkers(), getWorkerStats());
       } else {
         promises.push(Promise.resolve([]), Promise.resolve(null));
       }
-
-      if (checkPermission('documents:read')) {
+      
+      if (checkPermission('document:read')) {
         promises.push(getDocuments({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve(null));
@@ -520,9 +520,9 @@ export default function DashboardPage() {
         promises.push(getTemplates({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve(null));
-      }
+      }      
       
-      if (checkPermission('timesheet:read')) {
+      if (checkPermission('timesheets:read')) {
         promises.push(getTimeSheets({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve([]));
@@ -583,10 +583,10 @@ export default function DashboardPage() {
       // Calcular valor total das faturas
       const totalInvoiceValue = invoices.reduce((sum: number, invoice: { value?: number }) => sum + (invoice.value || 0), 0);
 
-      // Gerar atividade recente baseada nas permissões
+      // Gerar atividade recente baseada nas permissões - CORRIGIR aqui também
       const recentActivity: DashboardStats['recentActivity'] = [];
-
-      if (checkPermission('workers:read')) {
+      
+      if (checkPermission('worker:read')) {
         workers.slice(0, 3).forEach(worker => {
           recentActivity.push({
             id: `worker-${worker.id}`,
@@ -622,7 +622,8 @@ export default function DashboardPage() {
         });
       }
 
-      if (checkPermission('documents:read')) {
+      // ✅ CORRIGIDO: documents com 'S'
+      if (checkPermission('document:read')) {
         documents.slice(0, 2).forEach((document: { id: string; originalName: string; description?: string; uploadDate: string }) => {
           recentActivity.push({
             id: `document-${document.id}`,
@@ -783,41 +784,41 @@ export default function DashboardPage() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           title="Total de Funcionários"
-          value={stats.workers?.totalWorkers || 0}
-          subtitle={`${stats.workers?.activeWorkers || 0} ativos`}
+          value={hasPermission('worker:read') ? (stats.workers?.totalWorkers || 0) : '---'}
+          subtitle={hasPermission('worker:read') ? `${stats.workers?.activeWorkers || 0} ativos` : 'Sem acesso'}
           icon={UsersIcon}
           color="text-blue-600 dark:text-blue-400"
-          onClick={() => navigateToPage('worker')}
-          isRestricted={!hasPermission('workers:read')}
+          onClick={hasPermission('worker:read') ? () => navigateToPage('worker') : undefined}
+          isRestricted={!hasPermission('worker:read')}
         />
         
         <StatCard
           title="Documentos"
-          value={stats.documentsCount}
-          subtitle="Total no sistema"
+          value={hasPermission('document:read') ? stats.documentsCount : '---'}
+          subtitle={hasPermission('document:read') ? "Total no sistema" : 'Sem acesso'}
           icon={DocumentTextIcon}
           color="text-green-600 dark:text-green-400"
-          onClick={() => navigateToPage('document')}
-          isRestricted={!hasPermission('documents:read')}
+          onClick={hasPermission('document:read') ? () => navigateToPage('document') : undefined}
+          isRestricted={!hasPermission('document:read')}
         />
         
         <StatCard
           title="Visitantes"
-          value={stats.visitors?.totalVisitors || 0}
-          subtitle={`${stats.visitors?.checkedInCount || 0} presentes`}
+          value={hasPermission('visitors:read') ? (stats.visitors?.totalVisitors || 0) : '---'}
+          subtitle={hasPermission('visitors:read') ? `${stats.visitors?.checkedInCount || 0} presentes` : 'Sem acesso'}
           icon={UserGroupIcon}
           color="text-purple-600 dark:text-purple-400"
-          onClick={() => navigateToPage('visitor')}
+          onClick={hasPermission('visitors:read') ? () => navigateToPage('visitor') : undefined}
           isRestricted={!hasPermission('visitors:read')}
         />
         
         <StatCard
           title="Prestadores"
-          value={stats.providers?.totalProviders || 0}
-          subtitle={`${stats.providers?.checkedInCount || 0} presentes`}
+          value={hasPermission('providers:read') ? (stats.providers?.totalProviders || 0) : '---'}
+          subtitle={hasPermission('providers:read') ? `${stats.providers?.checkedInCount || 0} presentes` : 'Sem acesso'}
           icon={BuildingOfficeIcon}
           color="text-orange-600 dark:text-orange-400"
-          onClick={() => navigateToPage('provider')}
+          onClick={hasPermission('providers:read') ? () => navigateToPage('provider') : undefined}
           isRestricted={!hasPermission('providers:read')}
         />
       </motion.div>
@@ -826,42 +827,42 @@ export default function DashboardPage() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           title="Faturas"
-          value={stats.invoicesCount}
-          subtitle={hasPermission('invoices:read') ? `R$ ${stats.totalInvoiceValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Acesso restrito'}
+          value={hasPermission('invoices:read') ? stats.invoicesCount : '---'}
+          subtitle={hasPermission('invoices:read') ? `R$ ${stats.totalInvoiceValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Sem acesso'}
           icon={CurrencyDollarIcon}
           color="text-red-600 dark:text-red-400"
-          onClick={() => navigateToPage('invoice')}
+          onClick={hasPermission('invoices:read') ? () => navigateToPage('invoice') : undefined}
           isRestricted={!hasPermission('invoices:read')}
         />
         
         <StatCard
           title="Templates"
-          value={stats.templatesCount}
-          subtitle="Modelos disponíveis"
+          value={hasPermission('templates:read') ? stats.templatesCount : '---'}
+          subtitle={hasPermission('templates:read') ? "Modelos disponíveis" : 'Sem acesso'}
           icon={DocumentTextIcon}
           color="text-indigo-600 dark:text-indigo-400"
-          onClick={() => navigateToPage('template')}
+          onClick={hasPermission('templates:read') ? () => navigateToPage('template') : undefined}
           isRestricted={!hasPermission('templates:read')}
         />
         
         <StatCard
           title="Registros de Ponto"
-          value={stats.timeSheetsCount}
-          subtitle="Total de registros"
+          value={hasPermission('timesheets:read') ? stats.timeSheetsCount : '---'}
+          subtitle={hasPermission('timesheets:read') ? "Total de registros" : 'Sem acesso'}
           icon={ClockIcon}
           color="text-teal-600 dark:text-teal-400"
-          onClick={() => navigateToPage('timeSheet')}
-          isRestricted={!hasPermission('timesheet:read')}
+          onClick={hasPermission('timesheets:read') ? () => navigateToPage('timeSheet') : undefined}
+          isRestricted={!hasPermission('timesheets:read')}
         />
         
         <StatCard
           title="Departamentos"
-          value={stats.workers?.departmentsCount || 0}
-          subtitle="Setores ativos"
+          value={hasPermission('worker:read') ? (stats.workers?.departmentsCount || 0) : '---'}
+          subtitle={hasPermission('worker:read') ? "Setores ativos" : 'Sem acesso'}
           icon={BuildingOfficeIcon}
           color="text-pink-600 dark:text-pink-400"
-          onClick={() => navigateToPage('worker')}
-          isRestricted={!hasPermission('workers:read')}
+          onClick={hasPermission('worker:read') ? () => navigateToPage('worker') : undefined}
+          isRestricted={!hasPermission('worker:read')}
         />
       </motion.div>
 
@@ -869,7 +870,7 @@ export default function DashboardPage() {
       <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Departamentos */}
         <Card className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 relative">
-          {!hasPermission('workers:read') && (
+          {!hasPermission('worker:read') && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900/20 dark:bg-gray-600/20 rounded-lg z-10">
               <div className="flex flex-col items-center text-gray-600 dark:text-gray-400">
                 <EyeIcon className="h-6 w-6 mb-1" />
@@ -885,7 +886,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {!hasPermission('workers:read') ? (
+              {!hasPermission('worker:read') ? (
                 <div className="p-6 text-center text-gray-500 dark:text-gray-400">
                   <ExclamationTriangleIcon className="h-8 w-8 mx-auto mb-2" />
                   <p>Você não tem permissão para ver esta informação</p>
@@ -933,12 +934,17 @@ export default function DashboardPage() {
         {/* Atividade Recente */}
         <RecentActivity 
           activities={stats.recentActivity} 
-          hasPermission={hasPermission('dashboard:read')} 
+          hasPermission={
+            hasPermission('worker:read') || 
+            hasPermission('document:read') || 
+            hasPermission('visitors:read') || 
+            hasPermission('providers:read')
+          } 
         />
       </motion.div>
 
-      {/* Status dos Funcionários - só mostra se tem permissão */}
-      {hasPermission('workers:read') && (
+      {/* Status dos Funcionários - Só aparece se tiver permissão */}
+      {hasPermission('worker:read') && (
         <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Funcionários Ativos"

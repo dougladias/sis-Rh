@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { HiUsers, HiDocumentText, HiTemplate, HiMenuAlt2, HiX, HiPlus } from "react-icons/hi";
+import { TbPigMoney } from "react-icons/tb";
+import { RiMoneyDollarCircleLine } from "react-icons/ri";
 import { FaMoneyBill1Wave, FaFileInvoice } from "react-icons/fa6";
 import { FaUserClock, FaUserCog } from "react-icons/fa";
 import { GrUserWorker, GrDocumentVerified } from "react-icons/gr";
@@ -16,11 +18,13 @@ import ThemeToggle from "@/components/ui/ThemeToggle";
 const ALL_PERMISSIONS = {
   dashboard: ["dashboard:read"],
   backoffice: ["backoffice:access"],
-  workers: ["workers:read", "workers:write", "workers:delete"],
-  documents: ["documents:read", "documents:write", "documents:delete"],
+  workers: ["worker:read", "worker:write", "worker:delete"], 
+  documents: ["document:read", "document:write", "document:delete"], 
   templates: ["templates:read", "templates:write", "templates:delete"],
-  timesheet: ["timesheet:read", "timesheet:write", "timesheet:delete"],
-  payroll: ["payroll:read", "payroll:write", "payroll:delete"],
+  timesheet: ["timesheets:read", "timesheets:edit"], 
+  payroll: ["payrolls:read", "payrolls:edit", "payrolls:delete"], 
+  payslip: ["payslip:read", "payslip:write", "payslip:delete"],
+  benefit: ["benefit:read", "benefit:write", "benefit:delete"],
   invoices: ["invoices:read", "invoices:write", "invoices:delete"],
   visitors: ["visitors:read", "visitors:write", "visitors:delete"],
   providers: ["providers:read", "providers:write", "providers:delete"],
@@ -67,7 +71,7 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
-  
+
   // Determinar qual estado usar (props ou interno)
   const currentState = state !== undefined ? state : internalState;
   const isOpen = currentState === "open";
@@ -92,20 +96,20 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
     try {
       const token = getCookieClient();
       if (!token) return null;
-      
+
       if (typeof token === 'string') {
         const tokenParts = token.split('.');
         if (tokenParts.length !== 3) return null;
-        
-        const payload = JSON.parse(atob(tokenParts[1]));     
+
+        const payload = JSON.parse(atob(tokenParts[1]));
         return {
           id: payload.id || payload.sub,
           name: payload.name || 'Usuário',
           email: payload.email,
-          role: (payload.role || 'USER').toUpperCase() 
+          role: (payload.role || 'USER').toUpperCase()
         };
       }
-      
+
       return null;
     } catch (error) {
       console.error("Erro ao decodificar token:", error);
@@ -118,34 +122,34 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
     const loadUserData = async () => {
       try {
         const token = getCookieClient();
-        
+
         if (!token) {
           setUser(null);
           setLoading(false);
           return;
         }
-        
+
         const userData = getUserDataFromCookie();
         if (!userData) {
           setUser({ name: 'Usuário Globoo', role: 'USER' });
           setLoading(false);
           return;
         }
-        
+
         try {
           const response = await fetch('http://localhost:4000/permissions/me', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
-          
+
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.permissions) {
               setUser({
                 name: userData.name,
-                role: userData.role, 
+                role: userData.role,
                 permissions: data.permissions
               });
-              
+
               localStorage.setItem('user_permissions', JSON.stringify(data.permissions));
             } else {
               fallbackToCache(userData);
@@ -164,22 +168,22 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
         setLoading(false);
       }
     };
-    
+
     // Função simplificada para usar permissões em cache
-    const fallbackToCache = (userData: { name?: string; role?: string; email?: string }) => {      
-      if (userData.role === 'MANAGER') {        
+    const fallbackToCache = (userData: { name?: string; role?: string; email?: string }) => {
+      if (userData.role === 'MANAGER') {
         // Extrair todas as permissões de leitura da constante ALL_PERMISSIONS
         const allPermissions = Object.values(ALL_PERMISSIONS).flat();
-        
+
         setUser({
           name: userData.name || 'Usuário',
-          role: userData.role          
+          role: userData.role
         });
-        
+
         localStorage.setItem('user_permissions', JSON.stringify(allPermissions));
         return;
       }
-      
+
       // Recuperar permissões em cache para usuários não-manager
       const cachedPermissions = localStorage.getItem('user_permissions');
       setUser({
@@ -188,23 +192,23 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
         permissions: cachedPermissions ? JSON.parse(cachedPermissions) : []
       });
     };
-    
+
     loadUserData();
   }, [getUserDataFromCookie]);
 
   // Configuração de tema e CSS vars
   useEffect(() => {
     setMounted(true);
-    
+
     // Aplicar tema salvo
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || 
-       (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (savedTheme === 'dark' ||
+      (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       document.body.classList.add('dark');
     } else {
       document.body.classList.remove('dark');
     }
-    
+
     // Definir largura do sidebar como variável CSS
     if (mounted) {
       const widthMap = {
@@ -212,7 +216,7 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
         closed: '4.5rem',
         hidden: '0rem'
       };
-      
+
       document.documentElement.style.setProperty('--sidebar-width', widthMap[currentState]);
     }
   }, [currentState, mounted]);
@@ -220,26 +224,26 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
   // Mapeamento de permissões simplificado usando a constante ALL_PERMISSIONS
   const permissionMap = useMemo(() => {
     const readMap: Record<string, string[]> = {};
-    
+
     // Extrair somente permissões de leitura para a navegação
     Object.entries(ALL_PERMISSIONS).forEach(([key, permissions]) => {
       readMap[key] = permissions.filter(p => p.includes(':read')) || [permissions[0]];
     });
-    
+
     return readMap;
   }, []);
 
   // Verificar permissões de forma otimizada
   const hasPagePermission = useCallback((key: string) => {
     if (!user) return false;
-    
+
     if (user.role?.toUpperCase() === 'MANAGER') return true;
-    
+
     if (user.permissions?.length) {
       const requiredPermissions = permissionMap[key];
       return requiredPermissions?.some(p => user.permissions?.includes(p)) || false;
     }
-    
+
     return false;
   }, [user, permissionMap]);
 
@@ -264,6 +268,12 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
       href: '/pages/worker'
     },
     {
+      key: 'benefit',
+      label: 'Benefícios',
+      icon: <TbPigMoney size={21} />,
+      href: '/pages/benefit'
+    },
+    {
       key: 'documents',
       label: 'Documentos',
       icon: <HiDocumentText size={21} />,
@@ -286,6 +296,12 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
       label: 'Folha de Pagamento',
       icon: <FaMoneyBill1Wave size={21} />,
       href: '/pages/payroll'
+    },
+    {
+      key: 'payslip',
+      label: 'Holerite',
+      icon: <RiMoneyDollarCircleLine size={21} />,
+      href: '/pages/payslip'
     },
     {
       key: 'invoices',
@@ -320,8 +336,8 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
       setLoading(false);
       return;
     }
-    
-    const allowedMenus = allMenuItems.filter(menuItem => 
+
+    const allowedMenus = allMenuItems.filter(menuItem =>
       !menuItem.key || hasPagePermission(menuItem.key)
     );
 
@@ -387,7 +403,7 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
                     </p>
                     <p className="text-xs text-cyan-600 mt-1 dark:text-cyan-400 capitalize">
                       {user.role || "user"}
-                    </p>      
+                    </p>
                   </div>
                 </motion.div>
               )}
@@ -403,7 +419,7 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
                       <div className={`flex items-center ${isOpen ? 'justify-start' : 'justify-center'} gap-3.5 p-3 rounded-xl 
                         ${active ? 'bg-cyan-50 dark:bg-cyan-900/20' : 'hover:bg-blue-50 dark:hover:bg-white/5'} 
                         transition-all cursor-pointer group relative overflow-hidden`}>
-                        
+
                         {/* Indicador ativo */}
                         {active && (
                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-3/4 bg-cyan-500 dark:bg-cyan-400 rounded-r-md" />
@@ -411,14 +427,14 @@ export default function Sidebar({ state, onStateChange }: SidebarProps) {
 
                         {/* Ícone */}
                         <div className={`flex items-center justify-center w-8 h-8 rounded-lg 
-                          ${active ? 'bg-cyan-200/80 dark:bg-cyan-800/40 text-cyan-700 dark:text-cyan-200' : 
+                          ${active ? 'bg-cyan-200/80 dark:bg-cyan-800/40 text-cyan-700 dark:text-cyan-200' :
                             'bg-blue-100/80 dark:bg-white/5 text-cyan-600 dark:text-cyan-300'}`}>
                           {item.icon}
                         </div>
 
                         {/* Texto (somente se aberto) */}
                         {isOpen && (
-                          <span className={`${active ? 'text-cyan-700 dark:text-cyan-300 font-semibold' : 
+                          <span className={`${active ? 'text-cyan-700 dark:text-cyan-300 font-semibold' :
                             'text-gray-700 dark:text-gray-200'} whitespace-nowrap font-medium text-[14px]`}>
                             {item.label}
                           </span>

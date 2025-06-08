@@ -61,17 +61,21 @@ class DetailUserController {
       // Se for MANAGER, adicionar todas as permissões
       if (user.role === 'MANAGER') {
         const allPermissions = [
-          "dashboard:read","backoffice:access",
+          "dashboard:read",
+          "backoffice:access",
           'users:read', 'users:create', 'users:edit', 'users:delete',
           'profiles:read', 'profiles:create', 'profiles:edit', 'profiles:delete',
           'workers:read', 'workers:create', 'workers:edit', 'workers:delete',
+          'benefits:read', 'benefits:create', 'benefits:edit', 'benefits:delete',
           'documents:read', 'documents:create', 'documents:edit', 'documents:delete',
-          'timesheet:read', 'timesheet:edit',
-          'payroll:read', 'payroll:edit',
+          'timesheets:read', 'timesheets:edit', 
+          'payrolls:read', 'payrolls:edit', 'payrolls:delete',
+          'payslips:read', 'payslips:edit', 'payslips:delete',
           'templates:read', 'templates:edit', 'templates:create', 'templates:delete',
           'invoices:read', 'invoices:create', 'invoices:edit', 'invoices:delete',
           'visitors:read', 'visitors:create', 'visitors:edit', 'visitors:delete',
           'providers:read', 'providers:create', 'providers:edit', 'providers:delete'
+          
         ];
         allPermissions.forEach(perm => permissions.add(perm));
       }

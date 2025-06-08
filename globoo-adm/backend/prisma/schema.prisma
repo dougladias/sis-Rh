@@ -97,6 +97,19 @@ enum ProviderStatus {
   CANCELLED
 }
 
+enum MovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT
+  TRANSFER
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
 // ============================================================================
 // MÓDULO DE USUÁRIOS E AUTENTICAÇÃO
 // ============================================================================
@@ -517,6 +530,72 @@ model Template {
 }
 
 // ============================================================================
+// MÓDULO DE CONTROLE DE ESTOQUE
+// ============================================================================
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@index([name])
+  @@map("categories")
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  description  String?
+  categoryId   String
+  unit         String        @default("UN") // Unidade (KG, Litro, etc.)
+  minStock     Int           @default(0)
+  maxStock     Int?
+  currentStock Int           @default(0)
+  unitPrice    Decimal       @db.Decimal(10, 2) @default(0)
+  totalValue   Decimal       @db.Decimal(12, 2) @default(0) // Valor total do estoque
+  supplier     String?       // Fornecedor
+  status       ProductStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  category  Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  movements StockMovement[]
+
+  @@index([code])
+  @@index([name])
+  @@index([categoryId])
+  @@index([currentStock])
+  @@index([createdAt])
+  @@map("products")
+}
+
+model StockMovement {
+  id          String       @id @default(uuid())
+  productId   String
+  type        MovementType
+  quantity    Int
+  unitPrice   Decimal?     @db.Decimal(10, 2)
+  totalValue  Decimal?     @db.Decimal(12, 2)
+  reason      String?
+  description String?
+  userId      String?
+  createdAt   DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+// ============================================================================
 // CONFIGURAÇÕES DO SISTEMA
 // ============================================================================
 
@@ -555,3 +634,4 @@ model ActivityLog {
   @@index([createdAt])
   @@map("activity_logs")
 }
+

@@ -9,22 +9,32 @@ import {
   PlusIcon,
   XMarkIcon,
   MagnifyingGlassIcon,  
-  PlayIcon,
-  UserIcon,
-  CalendarIcon,  
+  DocumentTextIcon,
+  CheckIcon,
   BanknotesIcon,
+  UserIcon,
+  CalendarIcon,
+  DocumentArrowDownIcon,
+  PrinterIcon,  
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import Modal from '@/components/ui/Modal';
 import { 
-  getPayrolls, 
-  getPayrollById,   
-  handleUpdatePayroll, 
-  handleDeletePayroll,  
-  handleCreatePayroll,  
-  handleProcessPayroll,
-} from '@/server/payroll/payroll.actions';
-import { Payroll, PayrollFilters, CreatePayrollRequest, UpdatePayrollRequest, ProcessPayrollRequest, PayrollStatus } from '@/types/payroll.type';
+  getPayslips, 
+  getPayslipById,   
+  handleUpdatePayslip, 
+  handleDeletePayslip,  
+  handleCreatePayslip,  
+  handleMarkPayslipAsPaid,
+  handleCancelPayslip,
+  handleProcessPayslip,  
+  handleDownloadPayslipPDF,  
+} from '@/server/payslip/payslip.actions';
+import { getWorkers } from '@/server/worker/worker.actions';
+import { getPayrolls } from '@/server/payroll/payroll.actions';
+import { Payslip, PayslipFilters, CreatePayslipRequest, UpdatePayslipRequest, PayslipStatus } from '@/types/payslip.type';
+import { Worker } from '@/types/worker.type';
+import { Payroll, PayrollStatus } from '@/types/payroll.type';
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardFooter, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -84,23 +94,23 @@ const formatMonthYear = (month: number, year: number): string => {
   return `${monthNames[month - 1]} ${year}`;
 };
 
-const getStatusBadge = (status: PayrollStatus) => {
+const getStatusBadge = (status: PayslipStatus) => {
   const statusConfig = {
-    [PayrollStatus.DRAFT]: {
+    [PayslipStatus.DRAFT]: {
       bg: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
       text: "Rascunho"
     },
-    [PayrollStatus.PROCESSING]: {
-      bg: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-      text: "Processando"
+    [PayslipStatus.PROCESSED]: {
+      bg: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+      text: "Processado"
     },
-    [PayrollStatus.COMPLETED]: {
+    [PayslipStatus.PAID]: {
       bg: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-      text: "Concluída"
+      text: "Pago"
     },
-    [PayrollStatus.CANCELLED]: {
+    [PayslipStatus.CANCELLED]: {
       bg: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-      text: "Cancelada"
+      text: "Cancelado"
     }
   };
 
@@ -112,7 +122,7 @@ const getStatusBadge = (status: PayrollStatus) => {
   );
 };
 
-const PayrollPage: React.FC = () => {
+const PayslipPage: React.FC = () => {
   // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -135,8 +145,10 @@ const PayrollPage: React.FC = () => {
   };
 
   // Estados
+  const [workers, setWorkers] = useState<Worker[]>([]);
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
-  const [currentPayroll, setCurrentPayroll] = useState<Payroll | null>(null);
+  const [payslips, setPayslips] = useState<Payslip[]>([]);
+  const [currentPayslip, setCurrentPayslip] = useState<Payslip | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -144,8 +156,7 @@ const PayrollPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<'list' | 'form' | 'details'>('list');
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
-  const [filters, setFilters] = useState<PayrollFilters>({
+  const [filters, setFilters] = useState<PayslipFilters>({
     page: 1,
     limit: 10,
   });
@@ -157,14 +168,13 @@ const PayrollPage: React.FC = () => {
   });
   
   // Estado do formulário
-  const [formData, setFormData] = useState<CreatePayrollRequest>({
-    month: new Date().getMonth() + 1,
-    year: new Date().getFullYear(),
-    description: '',
-    status: PayrollStatus.DRAFT
-  });
-  const [processData, setProcessData] = useState<ProcessPayrollRequest>({
-    processedBy: ''
+  const [formData, setFormData] = useState<CreatePayslipRequest>({
+    payrollId: '',
+    workerId: '',
+    baseSalary: 0,
+    totalBenefits: 0,
+    totalDeductions: 0,
+    status: PayslipStatus.DRAFT
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -204,19 +214,58 @@ const PayrollPage: React.FC = () => {
     return () => window.removeEventListener('themeToggled', handleThemeChange as EventListener);
   }, []);
 
+  // Função para buscar funcionários
+  const fetchWorkers = useCallback(async () => {
+    try {
+      const workersData = await getWorkers();
+
+      if (workersData.length === 0) {
+        const hasAuthCookie = document.cookie.includes('session=');
+        if (!hasAuthCookie) {
+          window.location.href = '/auth/login';
+          return;
+        }
+      }
+
+      setWorkers(workersData);
+      clearError();
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
+        window.location.href = '/auth/login';
+        return;
+      }
+      
+      handleError('Erro ao buscar funcionários', err);
+    }
+  }, [clearError, handleError]);
+
   // Função para buscar folhas de pagamento
   const fetchPayrolls = useCallback(async () => {
-    setLoading(true);
     try {
-      const result = await getPayrolls(filters);
+      const result = await getPayrolls({ limit: 100 }); // Buscar mais folhas
       
       if (result) {
         setPayrolls(result.payrolls);
-        setPaginationMeta(result.pagination);
         clearError();
       }
     } catch (err) {
       handleError('Erro ao buscar folhas de pagamento', err);
+    }
+  }, [clearError, handleError]);
+
+  // Função para buscar holerites
+  const fetchPayslips = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await getPayslips({ ...filters, details: true });
+      
+      if (result) {
+        setPayslips(result.payslips);
+        setPaginationMeta(result.pagination);
+        clearError();
+      }
+    } catch (err) {
+      handleError('Erro ao buscar holerites', err);
     } finally {
       setLoading(false);
     }
@@ -224,35 +273,41 @@ const PayrollPage: React.FC = () => {
 
   // Efeitos
   useEffect(() => {
+    fetchWorkers();
     fetchPayrolls();
-  }, [fetchPayrolls]);
+  }, [fetchWorkers, fetchPayrolls]);
 
-  // Função para buscar uma folha específica pelo ID
-  const fetchPayrollById = async (id: string) => {
+  useEffect(() => {
+    fetchPayslips();
+  }, [fetchPayslips]);
+
+  // Função para buscar um holerite específico pelo ID
+  const fetchPayslipById = async (id: string) => {
     setLoading(true);
     try {
-      const payroll = await getPayrollById(id);
-      if (payroll) {
-        setCurrentPayroll(payroll);
+      const payslip = await getPayslipById(id);
+      if (payslip) {
+        setCurrentPayslip(payslip);
       }
       clearError();
     } catch (err) {
-      handleError('Erro ao buscar folha de pagamento', err);
+      handleError('Erro ao buscar holerite', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Filtragem de folhas baseada na busca
-  const filteredPayrolls = useMemo(() => {
-    if (!searchTerm) return payrolls;
+  // Filtragem de holerites baseada na busca
+  const filteredPayslips = useMemo(() => {
+    if (!searchTerm) return payslips;
 
     const lowerSearchTerm = searchTerm.toLowerCase();
-    return payrolls.filter(payroll => 
-      formatMonthYear(payroll.month, payroll.year).toLowerCase().includes(lowerSearchTerm) ||
-      (payroll.description && payroll.description.toLowerCase().includes(lowerSearchTerm))
+    return payslips.filter(payslip => 
+      payslip.employeeName.toLowerCase().includes(lowerSearchTerm) ||
+      payslip.employeeCode.toLowerCase().includes(lowerSearchTerm) ||
+      payslip.department.toLowerCase().includes(lowerSearchTerm)
     );
-  }, [payrolls, searchTerm]);
+  }, [payslips, searchTerm]);
 
   // Manipulador para alterações nos campos do formulário
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -260,7 +315,9 @@ const PayrollPage: React.FC = () => {
     
     setFormData({
       ...formData,
-      [name]: name === 'month' || name === 'year' ? parseInt(value) || 0 : value,
+      [name]: name === 'baseSalary' || name === 'totalBenefits' || name === 'totalDeductions' 
+        ? parseFloat(value) || 0 
+        : value,
     });
 
     // Limpar erro específico
@@ -276,39 +333,43 @@ const PayrollPage: React.FC = () => {
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
     
-    if (!formData.month || formData.month < 1 || formData.month > 12) {
-      errors.month = 'Selecione um mês válido';
+    if (!formData.payrollId) {
+      errors.payrollId = 'Selecione uma folha de pagamento';
     }
     
-    if (!formData.year || formData.year < 2000 || formData.year > 2100) {
-      errors.year = 'Digite um ano válido';
+    if (!formData.workerId) {
+      errors.workerId = 'Selecione um funcionário';
     }
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // Handler para criar nova folha
-  const handleNewPayroll = () => {
+  // Handler para criar novo holerite
+  const handleNewPayslip = () => {
     setFormData({
-      month: new Date().getMonth() + 1,
-      year: new Date().getFullYear(),
-      description: '',
-      status: PayrollStatus.DRAFT
+      payrollId: '',
+      workerId: '',
+      baseSalary: 0,
+      totalBenefits: 0,
+      totalDeductions: 0,
+      status: PayslipStatus.DRAFT
     });
     setFormErrors({});
     setFormMode('create');
     setActiveSection('form');
   };
 
-  // Handler para editar folha
-  const handleEditPayroll = (payroll: Payroll) => {
-    setCurrentPayroll(payroll);
+  // Handler para editar holerite
+  const handleEditPayslip = (payslip: Payslip) => {
+    setCurrentPayslip(payslip);
     setFormData({
-      month: payroll.month,
-      year: payroll.year,
-      description: payroll.description || '',
-      status: payroll.status
+      payrollId: payslip.payrollId,
+      workerId: payslip.workerId,
+      baseSalary: payslip.baseSalary,
+      totalBenefits: payslip.totalBenefits,
+      totalDeductions: payslip.totalDeductions,
+      status: payslip.status
     });
     setFormErrors({});
     setFormMode('edit');
@@ -316,16 +377,9 @@ const PayrollPage: React.FC = () => {
   };
 
   // Handler para ver detalhes
-  const handleViewPayroll = (id: string) => {
-    fetchPayrollById(id);
+  const handleViewPayslip = (id: string) => {
+    fetchPayslipById(id);
     setActiveSection('details');
-  };
-
-  // Handler para processar folha
-  const handleProcessClick = (payroll: Payroll) => {
-    setCurrentPayroll(payroll);
-    setProcessData({ processedBy: '' });
-    setIsProcessModalOpen(true);
   };
 
   // Função para enviar o formulário
@@ -337,54 +391,58 @@ const PayrollPage: React.FC = () => {
       
       setLoading(true);
       try {
-        const result = await handleCreatePayroll(formData);
+        const result = await handleCreatePayslip(formData);
         
         if (!result.success) {
-          setError(result.message || 'Erro ao criar folha de pagamento');
+          setError(result.message || 'Erro ao criar holerite');
           toast.error("Erro", { description: result.message });
         } else {
-          setSuccessMessage(result.message || 'Folha de pagamento criada com sucesso!');
+          setSuccessMessage(result.message || 'Holerite criado com sucesso!');
           toast.success("Sucesso", { description: result.message });
           setActiveSection('list');
-          fetchPayrolls();
+          fetchPayslips();
           
           // Limpar formulário
           setFormData({
-            month: new Date().getMonth() + 1,
-            year: new Date().getFullYear(),
-            description: '',
-            status: PayrollStatus.DRAFT
+            payrollId: '',
+            workerId: '',
+            baseSalary: 0,
+            totalBenefits: 0,
+            totalDeductions: 0,
+            status: PayslipStatus.DRAFT
           });
         }
       } catch (err) {
-        handleError('Erro ao criar folha de pagamento', err);
+        handleError('Erro ao criar holerite', err);
       } finally {
         setLoading(false);
       }
     } else {
       // Modo de edição
-      if (!currentPayroll) return;
+      if (!currentPayslip) return;
       
       setLoading(true);
       try {
-        const updateData: UpdatePayrollRequest = {
-          description: formData.description,
+        const updateData: UpdatePayslipRequest = {
+          baseSalary: formData.baseSalary,
+          totalBenefits: formData.totalBenefits,
+          totalDeductions: formData.totalDeductions,
           status: formData.status,
         };
         
-        const result = await handleUpdatePayroll(currentPayroll.id, updateData);
+        const result = await handleUpdatePayslip(currentPayslip.id, updateData);
         
         if (!result.success) {
-          setError(result.message || 'Erro ao atualizar folha');
+          setError(result.message || 'Erro ao atualizar holerite');
           toast.error("Erro", { description: result.message });
         } else {
-          setSuccessMessage('Folha de pagamento atualizada com sucesso!');
-          toast.success("Sucesso", { description: 'Folha atualizada com sucesso!' });
+          setSuccessMessage('Holerite atualizado com sucesso!');
+          toast.success("Sucesso", { description: 'Holerite atualizado com sucesso!' });
           setActiveSection('list');
-          fetchPayrolls();
+          fetchPayslips();
         }
       } catch (err) {
-        handleError('Erro ao atualizar folha de pagamento', err);
+        handleError('Erro ao atualizar holerite', err);
       } finally {
         setLoading(false);
       }
@@ -393,62 +451,152 @@ const PayrollPage: React.FC = () => {
 
   // Handler para confirmar exclusão
   const handleDeleteConfirm = async () => {
-    if (!currentPayroll) return;
+    if (!currentPayslip) return;
     
     setLoading(true);
     try {
-      const result = await handleDeletePayroll(currentPayroll.id);
+      const result = await handleDeletePayslip(currentPayslip.id);
       
       if (result.error) {
         setError(result.error);
         toast.error("Erro", { description: result.error });
       } else {
-        setSuccessMessage('Folha de pagamento excluída com sucesso!');
-        toast.success("Sucesso", { description: 'Folha excluída com sucesso!' });
+        setSuccessMessage('Holerite excluído com sucesso!');
+        toast.success("Sucesso", { description: 'Holerite excluído com sucesso!' });
         setIsDeleteModalOpen(false);
         setActiveSection('list');
-        fetchPayrolls();
+        fetchPayslips();
       }
     } catch (err) {
-      handleError('Erro ao excluir folha de pagamento', err);
+      handleError('Erro ao excluir holerite', err);
     } finally {
       setLoading(false);
       setIsDeleteModalOpen(false);
     }
   };
 
-  // Handler para confirmar processamento
-  const handleProcessConfirm = async () => {
-    if (!currentPayroll || !processData.processedBy.trim()) {
-      toast.error("Erro", { description: "Informe quem está processando a folha" });
+  // Handlers para ações de status
+  const handleMarkAsPaid = async (id: string) => {
+    setLoading(true);
+    try {
+      const result = await handleMarkPayslipAsPaid(id);
+      if (result.success) {
+        setSuccessMessage('Holerite marcado como pago!');
+        toast.success("Sucesso", { description: 'Holerite marcado como pago!' });
+        fetchPayslips();
+      } else {
+        setError(result.message || 'Erro ao marcar como pago');
+        toast.error("Erro", { description: result.message });
+      }
+    } catch (err) {
+      handleError('Erro ao marcar como pago', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProcess = async (id: string) => {
+    setLoading(true);
+    try {
+      const result = await handleProcessPayslip(id);
+      if (result.success) {
+        setSuccessMessage('Holerite processado com sucesso!');
+        toast.success("Sucesso", { description: 'Holerite processado!' });
+        fetchPayslips();
+      } else {
+        setError(result.message || 'Erro ao processar');
+        toast.error("Erro", { description: result.message });
+      }
+    } catch (err) {
+      handleError('Erro ao processar holerite', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    setLoading(true);
+    try {
+      const result = await handleCancelPayslip(id);
+      if (result.success) {
+        setSuccessMessage('Holerite cancelado!');
+        toast.success("Sucesso", { description: 'Holerite cancelado!' });
+        fetchPayslips();
+      } else {
+        setError(result.message || 'Erro ao cancelar');
+        toast.error("Erro", { description: result.message });
+      }
+    } catch (err) {
+      handleError('Erro ao cancelar holerite', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handlers para PDF - REMOVENDO handleViewPDF não utilizada
+  const handleDownloadPDF = async (payslip: Payslip) => {
+    setLoading(true);
+    try {
+      const result = await handleDownloadPayslipPDF(payslip.id, payslip.employeeName);
+      if (result.success && result.data) {
+        // Verificar se data tem as propriedades necessárias
+        const data = result.data as { downloadUrl: string; fileName: string; blob: Blob };
+        
+        // Fazer o download no cliente
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.download = data.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Limpar URL temporária
+        URL.revokeObjectURL(data.downloadUrl);
+        
+        toast.success("Sucesso", { description: result.message });
+      } else {
+        setError(result.error || 'Erro ao baixar PDF');
+        toast.error("Erro", { description: result.error });
+      }
+    } catch (err) {
+      handleError('Erro ao baixar PDF', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Nova função para visualizar PDF com token (similar à página de documentos)
+  const handleViewPDFWithToken = (payslipId: string) => {
+    // Obter o token do cookie
+    const cookies = document.cookie.split(';');
+    let token = null;
+    
+    // Procurar pelo cookie 'session' que contém o token
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.startsWith('session=')) {
+        token = cookie.substring('session='.length);
+        break;
+      }
+    }
+    
+    if (!token) {
+      toast.error("Você precisa estar autenticado");
       return;
     }
     
-    setLoading(true);
-    try {
-      const result = await handleProcessPayroll(currentPayroll.id, processData);
-      
-      if (!result.success) {
-        setError(result.message || 'Erro ao processar folha');
-        toast.error("Erro", { description: result.message });
-      } else {
-        setSuccessMessage(`Folha processada com sucesso! ${result.payslipsCreated || 0} holerites criados.`);
-        toast.success("Sucesso", { description: result.message });
-        setIsProcessModalOpen(false);
-        setActiveSection('list');
-        fetchPayrolls();
-      }
-    } catch (err) {
-      handleError('Erro ao processar folha de pagamento', err);
-    } finally {
-      setLoading(false);
-      setIsProcessModalOpen(false);
-    }
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    // Adicionar o token como parâmetro de query
+    const viewUrl = `${baseUrl}/payslips/${payslipId}/pdf?token=${token}`;
+    
+    // Abrir em nova aba
+    window.open(viewUrl, '_blank');
+    toast.success("PDF aberto em nova aba");
   };
 
   // Renderização condicional das seções
   const renderContent = () => {
-    if (loading && payrolls.length === 0 && activeSection === 'list') {
+    if (loading && payslips.length === 0 && activeSection === 'list') {
       return (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500 dark:border-cyan-400"></div>
@@ -458,46 +606,37 @@ const PayrollPage: React.FC = () => {
 
     switch (activeSection) {
       case 'list':
-        return renderPayrollsList();
+        return renderPayslipsList();
       case 'form':
-        return renderPayrollForm();
+        return renderPayslipForm();
       case 'details':
-        return renderPayrollDetails();
+        return renderPayslipDetails();
       default:
-        return renderPayrollsList();
+        return renderPayslipsList();
     }
   };
 
-  // Renderizar lista de folhas
-  const renderPayrollsList = () => {
+  // Renderizar lista de holerites
+  const renderPayslipsList = () => {
     return (
       <Card className="border-0 shadow-none">
         <CardHeader className="border-b border-stone-200 dark:border-gray-700">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-            <h2 className="text-xl font-semibold text-stone-800 dark:text-gray-100">Folhas de Pagamento</h2>
+            <h2 className="text-xl font-semibold text-stone-800 dark:text-gray-100">Holerites</h2>
             
             <div className="flex items-center gap-3 w-full sm:w-auto">
-              {/* Filtros de ano */}
+              {/* Filtros */}
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={filters.year || ''}
-                  onChange={(e) => setFilters({...filters, year: parseInt(e.target.value) || undefined, page: 1})}
-                  placeholder="Ano"
-                  min="2020"
-                  max="2030"
-                  className="block w-20 px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-stone-900 dark:text-gray-100"
-                />
                 <select
                   value={filters.status || ''}
-                  onChange={(e) => setFilters({...filters, status: e.target.value as PayrollStatus || undefined, page: 1})}
+                  onChange={(e) => setFilters({...filters, status: e.target.value as PayslipStatus || undefined, page: 1})}
                   className="block px-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-stone-900 dark:text-gray-100"
                 >
                   <option value="">Todos os status</option>
-                  <option value={PayrollStatus.DRAFT}>Rascunho</option>
-                  <option value={PayrollStatus.PROCESSING}>Processando</option>
-                  <option value={PayrollStatus.COMPLETED}>Concluída</option>
-                  <option value={PayrollStatus.CANCELLED}>Cancelada</option>
+                  <option value={PayslipStatus.DRAFT}>Rascunho</option>
+                  <option value={PayslipStatus.PROCESSED}>Processado</option>
+                  <option value={PayslipStatus.PAID}>Pago</option>
+                  <option value={PayslipStatus.CANCELLED}>Cancelado</option>
                 </select>
               </div>
 
@@ -509,20 +648,20 @@ const PayrollPage: React.FC = () => {
                 <input
                   type="text"
                   className="block w-full pl-10 pr-3 py-2 border border-stone-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-stone-900 dark:text-gray-100 placeholder-stone-500 dark:placeholder-gray-400"
-                  placeholder="Buscar folha..."
+                  placeholder="Buscar funcionário..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
 
-              {/* New Payroll Button */}
+              {/* New Payslip Button */}
               <motion.button
                 className="bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700 px-4 flex items-center py-2 rounded-lg text-sm gap-2 text-white shadow-sm transition-colors whitespace-nowrap"
-                onClick={handleNewPayroll}
+                onClick={handleNewPayslip}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <span>Nova Folha</span>
+                <span>Novo Holerite</span>
                 <PlusIcon className="h-5 w-5" />
               </motion.button>
             </div>
@@ -530,14 +669,14 @@ const PayrollPage: React.FC = () => {
         </CardHeader>
 
         <CardContent className="p-0">
-          {filteredPayrolls.length === 0 ? (
+          {filteredPayslips.length === 0 ? (
             <div className="p-6 text-center text-stone-500 dark:text-gray-400">
-              <p>{searchTerm ? "Nenhuma folha encontrada com esse termo de busca." : "Nenhuma folha de pagamento cadastrada."}</p>
+              <p>{searchTerm ? "Nenhum holerite encontrado com esse termo de busca." : "Nenhum holerite cadastrado."}</p>
               <Button
-                onClick={handleNewPayroll}
+                onClick={handleNewPayslip}
                 className="mt-4 bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700"
               >
-                Criar Primeira Folha
+                Criar Primeiro Holerite
               </Button>
             </div>
           ) : (
@@ -546,19 +685,19 @@ const PayrollPage: React.FC = () => {
                 <thead className="bg-stone-50 dark:bg-gray-900">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
+                      Funcionário
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
                       Período
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                      Funcionários
+                      Salário Base
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                      Valor Total
+                      Salário Líquido
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
                       Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                      Processado em
                     </th>
                     <th className="px-6 py-3 text-center text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
                       Ações
@@ -566,9 +705,9 @@ const PayrollPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700">
-                  {filteredPayrolls.map((payroll, index) => (
+                  {filteredPayslips.map((payslip, index) => (
                     <motion.tr 
-                      key={payroll.id} 
+                      key={payslip.id} 
                       className="hover:bg-stone-50 dark:hover:bg-gray-700/50 transition-colors"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -576,35 +715,34 @@ const PayrollPage: React.FC = () => {
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-stone-900 dark:text-gray-100">
-                          {formatMonthYear(payroll.month, payroll.year)}
+                          {payslip.employeeName}
                         </div>
-                        <div className="text-xs text-stone-500 dark:text-gray-400">{payroll.description}</div>
+                        <div className="text-xs text-stone-500 dark:text-gray-400">
+                          {payslip.employeeCode} - {payslip.department}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-stone-500 dark:text-gray-400">
-                          {payroll.employeeCount} funcionários
+                          {payslip.payroll ? formatMonthYear(payslip.payroll.month, payslip.payroll.year) : '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-stone-900 dark:text-gray-100">
-                          {formatCurrency(payroll.totalNetSalary)}
+                          {formatCurrency(payslip.baseSalary)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(payroll.status)}
+                        <div className="text-sm font-medium text-stone-900 dark:text-gray-100">
+                          {formatCurrency(payslip.netSalary)}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-stone-500 dark:text-gray-400">
-                          {payroll.processedAt ? formatDate(payroll.processedAt) : '-'}
-                        </div>
-                        <div className="text-xs text-stone-400 dark:text-gray-500">
-                          {payroll.processedBy || ''}
-                        </div>
+                        {getStatusBadge(payslip.status)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                         <div className="flex justify-center space-x-2">
                           <motion.button
-                            onClick={() => handleViewPayroll(payroll.id)}
+                            onClick={() => handleViewPayslip(payslip.id)}
                             className="text-cyan-600 hover:text-cyan-900 dark:text-cyan-400 dark:hover:text-cyan-300"
                             title="Ver detalhes"
                             whileHover={{ scale: 1.15 }}
@@ -613,20 +751,54 @@ const PayrollPage: React.FC = () => {
                             <EyeIcon className="h-5 w-5" />
                           </motion.button>
 
-                          {payroll.status === PayrollStatus.DRAFT && (
+                          <motion.button
+                            onClick={() => handleViewPDFWithToken(payslip.id)}
+                            className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300"
+                            title="Visualizar PDF"
+                            whileHover={{ scale: 1.15 }}
+                            whileTap={{ scale: 0.9 }}
+                          >
+                            <DocumentArrowDownIcon className="h-5 w-5" />
+                          </motion.button>
+                                                    
+                          {payslip.status === PayslipStatus.DRAFT && (
                             <motion.button
-                              onClick={() => handleProcessClick(payroll)}
-                              className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300"
+                              onClick={() => handleProcess(payslip.id)}
+                              className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
                               title="Processar"
                               whileHover={{ scale: 1.15 }}
                               whileTap={{ scale: 0.9 }}
                             >
-                              <PlayIcon className="h-5 w-5" />
+                              <DocumentTextIcon className="h-5 w-5" />
+                            </motion.button>
+                          )}
+
+                          {payslip.status === PayslipStatus.PROCESSED && (
+                            <motion.button
+                              onClick={() => handleMarkAsPaid(payslip.id)}
+                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                              title="Marcar como Pago"
+                              whileHover={{ scale: 1.15 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <CheckIcon className="h-5 w-5" />
+                            </motion.button>
+                          )}
+
+                          {(payslip.status === PayslipStatus.PROCESSED || payslip.status === PayslipStatus.PAID) && (
+                            <motion.button
+                              onClick={() => handleCancel(payslip.id)}
+                              className="text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300"
+                              title="Cancelar"
+                              whileHover={{ scale: 1.15 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <XMarkIcon className="h-5 w-5" />
                             </motion.button>
                           )}
 
                           <motion.button
-                            onClick={() => handleEditPayroll(payroll)}
+                            onClick={() => handleEditPayslip(payslip)}
                             className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
                             title="Editar"
                             whileHover={{ scale: 1.15 }}
@@ -635,10 +807,10 @@ const PayrollPage: React.FC = () => {
                             <PencilIcon className="h-5 w-5" />
                           </motion.button>
 
-                          {payroll.status !== PayrollStatus.COMPLETED && (
+                          {payslip.status !== PayslipStatus.PAID && (
                             <motion.button
                               onClick={() => {
-                                setCurrentPayroll(payroll);
+                                setCurrentPayslip(payslip);
                                 setIsDeleteModalOpen(true);
                               }}
                               className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
@@ -660,7 +832,7 @@ const PayrollPage: React.FC = () => {
         </CardContent>
 
         {/* Paginação */}
-        {filteredPayrolls.length > 0 && paginationMeta.totalPages > 1 && (
+        {filteredPayslips.length > 0 && paginationMeta.totalPages > 1 && (
           <CardFooter className="border-t border-stone-200 dark:border-gray-700">
             <div className="w-full flex items-center justify-between">
               <div className="flex-1 flex justify-between sm:hidden">
@@ -739,14 +911,14 @@ const PayrollPage: React.FC = () => {
     );
   };
 
-  // Renderizar formulário de folha
-  const renderPayrollForm = () => {
+  // Renderizar formulário de holerite
+  const renderPayslipForm = () => {
     return (
       <Card className="border-0 shadow-none">
         <CardHeader className="border-b border-stone-200 dark:border-gray-700">
           <div className="flex justify-between items-center">
             <CardTitle className="text-xl font-semibold text-stone-800 dark:text-white">
-              {formMode === 'create' ? 'Nova Folha de Pagamento' : 'Editar Folha de Pagamento'}
+              {formMode === 'create' ? 'Novo Holerite' : 'Editar Holerite'}
             </CardTitle>
             <motion.button
               onClick={() => setActiveSection('list')}
@@ -762,66 +934,110 @@ const PayrollPage: React.FC = () => {
         <CardContent className="p-4">
           <form onSubmit={handleFormSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Mês */}
+              {/* Folha de Pagamento */}
               <div className="space-y-2">
-                <label htmlFor="month" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
-                  Mês <span className="text-red-500 dark:text-red-400">*</span>
+                <label htmlFor="payrollId" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Folha de Pagamento <span className="text-red-500 dark:text-red-400">*</span>
                 </label>
                 <select
-                  name="month"
-                  id="month"
-                  value={formData.month}
+                  name="payrollId"
+                  id="payrollId"
+                  value={formData.payrollId}
                   onChange={handleFormChange}
                   disabled={formMode === 'edit'}
                   className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400 disabled:bg-gray-100 dark:disabled:bg-gray-800"
                   required
                 >
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      {new Date(0, i).toLocaleDateString('pt-BR', { month: 'long' })}
+                  <option value="">Selecione uma folha de pagamento</option>
+                  {payrolls
+                    .filter(payroll => payroll.status === PayrollStatus.DRAFT || payroll.status === PayrollStatus.PROCESSING)
+                    .map((payroll) => (
+                    <option key={payroll.id} value={payroll.id}>
+                      {formatMonthYear(payroll.month, payroll.year)} - {payroll.description}
                     </option>
                   ))}
                 </select>
-                {formErrors.month && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.month}</p>
+                {formErrors.payrollId && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.payrollId}</p>
                 )}
               </div>
               
-              {/* Ano */}
+              {/* Funcionário */}
               <div className="space-y-2">
-                <label htmlFor="year" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
-                  Ano <span className="text-red-500 dark:text-red-400">*</span>
+                <label htmlFor="workerId" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Funcionário <span className="text-red-500 dark:text-red-400">*</span>
                 </label>
-                <Input
-                  type="number"
-                  name="year"
-                  id="year"
-                  value={formData.year}
+                <select
+                  name="workerId"
+                  id="workerId"
+                  value={formData.workerId}
                   onChange={handleFormChange}
                   disabled={formMode === 'edit'}
-                  min="2020"
-                  max="2030"
+                  className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400 disabled:bg-gray-100 dark:disabled:bg-gray-800"
                   required
-                  className="dark:border-gray-600 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800"
-                />
-                {formErrors.year && (
-                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.year}</p>
+                >
+                  <option value="">Selecione um funcionário</option>
+                  {workers
+                    .filter(worker => worker.status === 'ACTIVE')
+                    .map((worker) => (
+                    <option key={worker.id} value={worker.id}>
+                      {worker.name} ({worker.employeeCode}) - {worker.department}
+                    </option>
+                  ))}
+                </select>
+                {formErrors.workerId && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">{formErrors.workerId}</p>
                 )}
               </div>
 
-              {/* Descrição */}
-              <div className="space-y-2 md:col-span-2">
-                <label htmlFor="description" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
-                  Descrição
+              {/* Salário Base */}
+              <div className="space-y-2">
+                <label htmlFor="baseSalary" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Salário Base
                 </label>
-                <textarea
-                  name="description"
-                  id="description"
-                  value={formData.description}
+                <Input
+                  type="number"
+                  name="baseSalary"
+                  id="baseSalary"
+                  value={formData.baseSalary}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400"
-                  rows={3}
-                  placeholder="Descrição opcional da folha de pagamento..."
+                  min="0"
+                  step="0.01"
+                  className="dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              {/* Benefícios */}
+              <div className="space-y-2">
+                <label htmlFor="totalBenefits" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Total de Benefícios
+                </label>
+                <Input
+                  type="number"
+                  name="totalBenefits"
+                  id="totalBenefits"
+                  value={formData.totalBenefits}
+                  onChange={handleFormChange}
+                  min="0"
+                  step="0.01"
+                  className="dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+
+              {/* Deduções */}
+              <div className="space-y-2">
+                <label htmlFor="totalDeductions" className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Total de Deduções
+                </label>
+                <Input
+                  type="number"
+                  name="totalDeductions"
+                  id="totalDeductions"
+                  value={formData.totalDeductions}
+                  onChange={handleFormChange}
+                  min="0"
+                  step="0.01"
+                  className="dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
 
@@ -838,13 +1054,23 @@ const PayrollPage: React.FC = () => {
                     onChange={handleFormChange}
                     className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400"
                   >
-                    <option value={PayrollStatus.DRAFT}>Rascunho</option>
-                    <option value={PayrollStatus.PROCESSING}>Processando</option>
-                    <option value={PayrollStatus.COMPLETED}>Concluída</option>
-                    <option value={PayrollStatus.CANCELLED}>Cancelada</option>
+                    <option value={PayslipStatus.DRAFT}>Rascunho</option>
+                    <option value={PayslipStatus.PROCESSED}>Processado</option>
+                    <option value={PayslipStatus.PAID}>Pago</option>
+                    <option value={PayslipStatus.CANCELLED}>Cancelado</option>
                   </select>
                 </div>
               )}
+
+              {/* Salário Líquido Calculado */}
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium text-stone-700 dark:text-gray-300 block">
+                  Salário Líquido (Calculado)
+                </label>
+                <div className="w-full px-3 py-2 rounded-md border border-stone-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg font-semibold text-cyan-600 dark:text-cyan-400">
+                  {formatCurrency((formData.baseSalary || 0) + (formData.totalBenefits || 0) - (formData.totalDeductions || 0))}
+                </div>
+              </div>
             </div>
           </form>
         </CardContent>
@@ -870,7 +1096,7 @@ const PayrollPage: React.FC = () => {
                   {formMode === 'create' ? 'Criando...' : 'Salvando...'}
                 </div>
               ) : (
-                formMode === 'create' ? 'Criar Folha' : 'Salvar Alterações'
+                formMode === 'create' ? 'Criar Holerite' : 'Salvar Alterações'
               )}
             </Button>
           </div>
@@ -879,9 +1105,9 @@ const PayrollPage: React.FC = () => {
     );
   };
 
-  // Renderizar detalhes de uma folha
-  const renderPayrollDetails = () => {
-    if (!currentPayroll) return null;
+  // Renderizar detalhes de um holerite
+  const renderPayslipDetails = () => {
+    if (!currentPayslip) return null;
 
     // Item de informação reutilizável
     const InfoItem = ({ label, value }: { label: string, value: React.ReactNode }) => (
@@ -897,10 +1123,10 @@ const PayrollPage: React.FC = () => {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle className="text-lg leading-6 font-medium text-stone-900 dark:text-white">
-                Detalhes da Folha de Pagamento
+                Detalhes do Holerite
               </CardTitle>
               <p className="mt-1 max-w-2xl text-sm text-stone-500 dark:text-gray-400">
-                Informações completas sobre a folha de pagamento.
+                Informações completas sobre o holerite.
               </p>
             </div>
             <motion.button
@@ -916,46 +1142,50 @@ const PayrollPage: React.FC = () => {
 
         <CardContent className="p-0">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
-            {/* Informações gerais */}
+            {/* Informações do funcionário */}
             <div className="lg:col-span-2">
+              <div className="bg-stone-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
+                <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4 flex items-center">
+                  <UserIcon className="h-5 w-5 mr-2" />
+                  Funcionário
+                </h3>
+                <dl className="space-y-2">
+                  <InfoItem label="Nome" value={currentPayslip.employeeName} />
+                  <InfoItem label="Código" value={currentPayslip.employeeCode} />
+                  <InfoItem label="Cargo" value={currentPayslip.position} />
+                  <InfoItem label="Departamento" value={currentPayslip.department} />
+                  {currentPayslip.worker?.cpf && (
+                    <InfoItem label="CPF" value={currentPayslip.worker.cpf} />
+                  )}
+                  {currentPayslip.worker?.email && (
+                    <InfoItem label="Email" value={currentPayslip.worker.email} />
+                  )}
+                </dl>
+              </div>
+
+              {/* Período */}
               <div className="bg-stone-50 dark:bg-gray-700 rounded-lg p-4">
                 <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4 flex items-center">
                   <CalendarIcon className="h-5 w-5 mr-2" />
-                  Informações Gerais
+                  Período
                 </h3>
                 <dl className="space-y-2">
-                  <InfoItem label="Período" value={formatMonthYear(currentPayroll.month, currentPayroll.year)} />
-                  <InfoItem label="Descrição" value={currentPayroll.description || "-"} />
-                  <InfoItem label="Status" value={getStatusBadge(currentPayroll.status)} />
-                  <InfoItem label="Data de Criação" value={formatDate(currentPayroll.createdAt)} />
-                  <InfoItem label="Última Atualização" value={formatDate(currentPayroll.updatedAt)} />
-                  {currentPayroll.processedAt && (
-                    <InfoItem label="Processado em" value={formatDate(currentPayroll.processedAt)} />
-                  )}
-                  {currentPayroll.processedBy && (
-                    <InfoItem label="Processado por" value={currentPayroll.processedBy} />
+                  <InfoItem 
+                    label="Período" 
+                    value={currentPayslip.payroll ? formatMonthYear(currentPayslip.payroll.month, currentPayslip.payroll.year) : '-'} 
+                  />
+                  <InfoItem label="Status" value={getStatusBadge(currentPayslip.status)} />
+                  <InfoItem label="Data de Criação" value={formatDate(currentPayslip.createdAt)} />
+                  <InfoItem label="Última Atualização" value={formatDate(currentPayslip.updatedAt)} />
+                  {currentPayslip.paymentDate && (
+                    <InfoItem label="Data de Pagamento" value={formatDate(currentPayslip.paymentDate)} />
                   )}
                 </dl>
               </div>
             </div>
 
-            {/* Estatísticas */}
+            {/* Valores */}
             <div className="space-y-4">
-              <div className="bg-stone-50 dark:bg-gray-700 rounded-lg p-4">
-                <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4 flex items-center">
-                  <UserIcon className="h-5 w-5 mr-2" />
-                  Funcionários
-                </h3>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-cyan-600 dark:text-cyan-400">
-                    {currentPayroll.employeeCount}
-                  </div>
-                  <div className="text-sm text-stone-500 dark:text-gray-400">
-                    Total de funcionários
-                  </div>
-                </div>
-              </div>
-
               <div className="bg-stone-50 dark:bg-gray-700 rounded-lg p-4">
                 <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4 flex items-center">
                   <BanknotesIcon className="h-5 w-5 mr-2" />
@@ -963,28 +1193,28 @@ const PayrollPage: React.FC = () => {
                 </h3>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-sm text-stone-500 dark:text-gray-400">Salário Bruto:</span>
+                    <span className="text-sm text-stone-500 dark:text-gray-400">Salário Base:</span>
                     <span className="text-sm font-medium text-stone-900 dark:text-gray-100">
-                      {formatCurrency(currentPayroll.totalGrossSalary)}
+                      {formatCurrency(currentPayslip.baseSalary)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-stone-500 dark:text-gray-400">Benefícios:</span>
                     <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                      {formatCurrency(currentPayroll.totalBenefits)}
+                      {formatCurrency(currentPayslip.totalBenefits)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-stone-500 dark:text-gray-400">Deduções:</span>
                     <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                      -{formatCurrency(currentPayroll.totalDeductions)}
+                      -{formatCurrency(currentPayslip.totalDeductions)}
                     </span>
                   </div>
                   <div className="border-t border-stone-200 dark:border-gray-600 pt-2">
                     <div className="flex justify-between">
                       <span className="text-base font-medium text-stone-900 dark:text-gray-100">Salário Líquido:</span>
                       <span className="text-base font-bold text-cyan-600 dark:text-cyan-400">
-                        {formatCurrency(currentPayroll.totalNetSalary)}
+                        {formatCurrency(currentPayslip.netSalary)}
                       </span>
                     </div>
                   </div>
@@ -993,55 +1223,91 @@ const PayrollPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Lista de holerites (se disponível) */}
-          {currentPayroll.payslips && currentPayroll.payslips.length > 0 && (
+          {/* Deduções detalhadas */}
+          {currentPayslip.deductions && currentPayslip.deductions.length > 0 && (
             <div className="border-t border-stone-200 dark:border-gray-700 p-6">
               <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4">
-                Holerites ({currentPayroll.payslips.length})
+                Deduções ({currentPayslip.deductions.length})
               </h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-stone-200 dark:divide-gray-700">
                   <thead className="bg-stone-50 dark:bg-gray-900">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                        Funcionário
+                        Código
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                        Departamento
+                        Tipo
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                        Salário Base
+                        Descrição
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                        Salário Líquido
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
-                        Status
+                        Valor
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700">
-                    {currentPayroll.payslips.map((payslip) => (
-                      <tr key={payslip.id} className="hover:bg-stone-50 dark:hover:bg-gray-700/50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-stone-900 dark:text-gray-100">
-                            {payslip.employeeName}
-                          </div>
-                          <div className="text-xs text-stone-500 dark:text-gray-400">
-                            {payslip.employeeCode}
-                          </div>
+                    {currentPayslip.deductions.map((deduction) => (
+                      <tr key={deduction.id} className="hover:bg-stone-50 dark:hover:bg-gray-700/50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-900 dark:text-gray-100">
+                          {deduction.code}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500 dark:text-gray-400">
-                          {payslip.department}
+                          {deduction.type}
                         </td>
+                        <td className="px-6 py-4 text-sm text-stone-500 dark:text-gray-400">
+                          {deduction.description || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600 dark:text-red-400">
+                          -{formatCurrency(deduction.value)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Benefícios detalhados */}
+          {currentPayslip.benefits && currentPayslip.benefits.length > 0 && (
+            <div className="border-t border-stone-200 dark:border-gray-700 p-6">
+              <h3 className="text-lg font-medium text-stone-800 dark:text-white mb-4">
+                Benefícios ({currentPayslip.benefits.length})
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-stone-200 dark:divide-gray-700">
+                  <thead className="bg-stone-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
+                        Código
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
+                        Tipo
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
+                        Descrição
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-stone-500 dark:text-gray-400 uppercase tracking-wider">
+                        Valor
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700">
+                    {currentPayslip.benefits.map((benefit) => (
+                      <tr key={benefit.id} className="hover:bg-stone-50 dark:hover:bg-gray-700/50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-900 dark:text-gray-100">
-                          {formatCurrency(payslip.baseSalary)}
+                          {benefit.code}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-stone-900 dark:text-gray-100">
-                          {formatCurrency(payslip.netSalary)}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-stone-500 dark:text-gray-400">
+                          {benefit.type}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(payslip.status as unknown as PayrollStatus)}
+                        <td className="px-6 py-4 text-sm text-stone-500 dark:text-gray-400">
+                          {benefit.description || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600 dark:text-green-400">
+                          +{formatCurrency(benefit.value)}
                         </td>
                       </tr>
                     ))}
@@ -1054,17 +1320,43 @@ const PayrollPage: React.FC = () => {
 
         <CardFooter className="bg-stone-50 dark:bg-gray-900 border-t border-stone-200 dark:border-gray-700">
           <div className="flex justify-end space-x-3 w-full">
-            {currentPayroll.status === PayrollStatus.DRAFT && (
+            <Button
+              onClick={() => handleViewPDFWithToken(currentPayslip.id)}
+              className="bg-purple-500 hover:bg-purple-600 text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+            >
+              <PrinterIcon className="h-4 w-4 mr-2" />
+              Visualizar PDF
+            </Button>
+
+            <Button
+              onClick={() => handleDownloadPDF(currentPayslip)}
+              className="bg-orange-500 hover:bg-orange-600 text-white dark:bg-orange-600 dark:hover:bg-orange-700"
+            >
+              <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+              Baixar PDF
+            </Button>
+
+            {currentPayslip.status === PayslipStatus.DRAFT && (
               <Button
-                onClick={() => handleProcessClick(currentPayroll)}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white dark:bg-yellow-600 dark:hover:bg-yellow-700"
+                onClick={() => handleProcess(currentPayslip.id)}
+                className="bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700"
               >
-                <PlayIcon className="h-4 w-4 mr-2" />
+                <DocumentTextIcon className="h-4 w-4 mr-2" />
                 Processar
               </Button>
             )}
             
-            {currentPayroll.status !== PayrollStatus.COMPLETED && (
+            {currentPayslip.status === PayslipStatus.PROCESSED && (
+              <Button
+                onClick={() => handleMarkAsPaid(currentPayslip.id)}
+                className="bg-green-500 hover:bg-green-600 text-white dark:bg-green-600 dark:hover:bg-green-700"
+              >
+                <CheckIcon className="h-4 w-4 mr-2" />
+                Marcar como Pago
+              </Button>
+            )}
+
+            {currentPayslip.status !== PayslipStatus.PAID && (
               <Button
                 onClick={() => setIsDeleteModalOpen(true)}
                 variant="destructive"
@@ -1075,7 +1367,7 @@ const PayrollPage: React.FC = () => {
             )}
             
             <Button
-              onClick={() => handleEditPayroll(currentPayroll)}
+              onClick={() => handleEditPayslip(currentPayslip)}
               className="bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700"
             >
               Editar
@@ -1095,8 +1387,8 @@ const PayrollPage: React.FC = () => {
     >
       {/* Page header */}
       <motion.div variants={itemVariants} className="mb-6">
-        <h1 className="text-3xl font-bold text-stone-800 dark:text-white">Folha de Pagamento</h1>
-        <p className="text-stone-500 dark:text-gray-400 mt-1">Gerencie a folha de pagamento dos funcionários</p>
+        <h1 className="text-3xl font-bold text-stone-800 dark:text-white">Gerenciamento de Holerites</h1>
+        <p className="text-stone-500 dark:text-gray-400 mt-1">Gerencie os holerites dos funcionários</p>
       </motion.div>
 
       {/* Mensagens de sucesso/erro */}
@@ -1198,9 +1490,9 @@ const PayrollPage: React.FC = () => {
               </div>
 
               <p className="text-stone-700 dark:text-gray-300 text-lg mb-2">
-                Tem certeza que deseja excluir a folha de pagamento <br />
+                Tem certeza que deseja excluir o holerite de <br />
                 <strong className="font-semibold">
-                  {currentPayroll && formatMonthYear(currentPayroll.month, currentPayroll.year)}
+                  {currentPayslip?.employeeName}
                 </strong>?
               </p>
               <p className="text-stone-600 dark:text-gray-400 text-sm mt-4">
@@ -1210,94 +1502,8 @@ const PayrollPage: React.FC = () => {
           </CardContent>
         </Card>
       </Modal>
-
-      {/* Modal de processamento */}
-      <Modal
-        isOpen={isProcessModalOpen}
-        onClose={() => setIsProcessModalOpen(false)}
-        title="Processar Folha de Pagamento"
-        size="md"
-        closeOnOutsideClick={true}
-        footer={
-          <div className="flex justify-end space-x-3 w-full">
-            <Button
-              variant="secondary"
-              onClick={() => setIsProcessModalOpen(false)}
-              disabled={loading}
-              className="bg-stone-200 hover:bg-stone-300 text-stone-800 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200"
-            >
-              Cancelar
-            </Button>
-
-            <Button
-              onClick={handleProcessConfirm}
-              disabled={loading || !processData.processedBy.trim()}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white dark:bg-yellow-600 dark:hover:bg-yellow-700"
-            >
-              {loading ? (
-                <div className="flex items-center">
-                  <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                  Processando...
-                </div>
-              ) : (
-                'Processar Folha'
-              )}
-            </Button>
-          </div>
-        }
-      >
-        <Card className="border-0 shadow-none">
-          <CardContent className="p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex flex-col items-center mb-6">
-                <motion.div
-                  className="bg-yellow-100 dark:bg-yellow-900/30 rounded-full p-4 text-yellow-500 dark:text-yellow-400 mb-4"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", damping: 10 }}
-                >
-                  <PlayIcon className="h-8 w-8" />
-                </motion.div>
-              </div>
-
-              <div className="text-center mb-6">
-                <p className="text-stone-700 dark:text-gray-300 text-lg mb-2">
-                  Processar folha de pagamento para <br />
-                  <strong className="font-semibold">
-                    {currentPayroll && formatMonthYear(currentPayroll.month, currentPayroll.year)}
-                  </strong>?
-                </p>
-                <p className="text-stone-600 dark:text-gray-400 text-sm">
-                  Isso irá gerar os holerites para todos os funcionários ativos.
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="processedBy" className="block text-sm font-medium text-stone-700 dark:text-gray-300 mb-2">
-                    Processado por <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    type="text"
-                    id="processedBy"
-                    value={processData.processedBy}
-                    onChange={(e) => setProcessData({ processedBy: e.target.value })}
-                    placeholder="Nome do responsável pelo processamento"
-                    className="dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                    required
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </CardContent>
-        </Card>
-      </Modal>
     </motion.div>
   );
 };
 
-export default PayrollPage;
+export default PayslipPage;
