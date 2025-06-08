@@ -35,11 +35,8 @@ export async function validateTokenClient(): Promise<boolean> {
 
 // Função para logout completo
 export function logoutClient() {
-  try {
-    console.log("Removendo cookie de sessão...");
-    deleteCookie('session');
-    
-    console.log("Redirecionando para página de login...");
+  try {    
+    deleteCookie('session');   
     // Força o redirecionamento sem cache
     window.location.replace('/auth/login');
   } catch (error) {

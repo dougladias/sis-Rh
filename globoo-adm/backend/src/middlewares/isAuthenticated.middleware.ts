@@ -1,55 +1,87 @@
 import { NextFunction, Request, Response } from "express";
 import { verify } from "jsonwebtoken";
+import prisma from "../prisma";
 
-// Define a interface Payload para tipar o conteúdo do token JWT
 interface Payload {
     sub: string;
+    name: string;
+    email: string;
+    role: string;
 }
 
-// Middleware para verificar se o usuário está autenticado
-export function isAuthenticated(
+export async function isAuthenticated(
   request: Request,
   response: Response,
   next: NextFunction
 ) {
-  // Verifica se o token JWT está presente no cabeçalho Authorization
   const authToken = request.headers.authorization;
-  
-  // Verifica se o token está na query string (para visualização de documentos)
   const queryToken = request.query.token as string;
   
   let token: string | null = null;
   
-  // Extrai o token do cabeçalho Authorization se estiver disponível
   if (authToken) {
     const parts = authToken.split(" ");
-    if (parts.length === 2) {
+    if (parts.length === 2 && parts[0] === "Bearer") {
       token = parts[1];
     }
-  } 
-  // Se não tiver no cabeçalho, usa o token da query string
-  else if (queryToken) {
+  } else if (queryToken) {
     token = queryToken;
   }
   
-  // Se não encontrou o token em nenhum lugar, retorna erro
   if (!token) {
-    return response.status(401).json({ error: "Token não fornecido" });
+    return response.status(401).json({ 
+      success: false,
+      message: "Token não fornecido" 
+    });
   }
 
   try {
-    // Validar o Token
-    const { sub } = verify(
-        token, 
-        process.env.JWT_SECRET as string
-    ) as Payload;  
+    // Verificar e decodificar o token
+    const decoded = verify(
+      token, 
+      process.env.JWT_SECRET as string
+    ) as Payload;
 
-    // Recuperar o id do token e colocar dentro da request
-    request.user = { id: sub, role: "user" }; 
+    // Buscar dados atualizados do usuário no banco
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true
+      }
+    });
+
+    if (!user) {
+      return response.status(401).json({ 
+        success: false,
+        message: "Usuário não encontrado" 
+      });
+    }
+
+    if (!user.isActive) {
+      return response.status(401).json({ 
+        success: false,
+        message: "Usuário inativo" 
+      });
+    }
+
+    // Adicionar dados do usuário à requisição
+    request.user = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    };
     
-    // Se o token for válido, chama a próxima função middleware
     return next();
   } catch (err) {
-    return response.status(401).json({ error: "Token inválido" });
-  }  
+    console.error("Erro na validação do token:", err);
+    return response.status(401).json({ 
+      success: false,
+      message: "Token inválido ou expirado" 
+    });
+  }
 }

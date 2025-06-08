@@ -22,8 +22,7 @@ export async function getWorkers(): Promise<Worker[]> {
     });
 
     // Verificar se a resposta tem a estrutura esperada
-    if (response.data && response.data.success && Array.isArray(response.data.workers)) {
-      console.log('Resposta da API processada corretamente:', response.data.workers.length, 'workers encontrados');
+    if (response.data && response.data.success && Array.isArray(response.data.workers)) {      
       return response.data.workers;
     }
     

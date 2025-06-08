@@ -87,8 +87,7 @@ export default function PaginaHome() {
     }
 
     // Listener para mudanças de tema
-    const handleThemeChange = (e: CustomEvent) => {
-      console.log("Tasks page: Tema alterado para", e.detail?.theme);
+    const handleThemeChange = (e: CustomEvent) => {      
       const newTheme = e.detail?.theme || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
       if (newTheme === 'dark') {
         document.documentElement.classList.add('dark');

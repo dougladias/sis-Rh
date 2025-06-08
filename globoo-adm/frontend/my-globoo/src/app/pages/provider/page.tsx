@@ -1020,8 +1020,7 @@ const ProvidersPage: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
 
-    const handleThemeChange = (e: CustomEvent) => {
-      console.log("Providers page: Tema alterado para", e.detail?.theme);
+    const handleThemeChange = (e: CustomEvent) => {      
       const newTheme = e.detail?.theme || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
       if (newTheme === 'dark') {
         document.documentElement.classList.add('dark');
