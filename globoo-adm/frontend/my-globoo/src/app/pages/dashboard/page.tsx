@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { motion } from 'framer-motion';
 import {
   UsersIcon,
@@ -20,6 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getCookieClient } from "@/lib/cookieClient/cookieClient";
 
 // Importar todas as server actions
 import { getWorkers, getWorkerStats } from '@/server/worker/worker.actions';
@@ -37,23 +38,16 @@ import { VisitorStats } from '@/types/visitor.type';
 import { ProviderStats } from '@/types/provider.type';
 
 // Interfaces para permissões e módulos dinâmicos
+interface UserData {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 interface UserPermissions {
   role: string;
   permissions: string[];
-}
-
-interface DashboardModule {
-  id: string;
-  title: string;
-  icon: React.ElementType;
-  color: string;
-  requiredPermissions: string[];
-  requiredRoles?: string[];
-  getData?: () => Promise<Record<string, unknown>>;
-  value?: string | number;
-  subtitle?: string;
-  href?: string;
-  isVisible: boolean;
 }
 
 // Interfaces para estatísticas do dashboard
@@ -260,7 +254,7 @@ const RecentActivity: React.FC<RecentActivityProps> = ({ activities, hasPermissi
   );
 };
 
-// Correção para os tipos que estavam usando "any"
+// Interfaces para correção dos tipos
 interface DocumentResponse {
   documents?: Array<{
     id: string;
@@ -325,8 +319,8 @@ export default function DashboardPage() {
   // Estados
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [userPermissions, setUserPermissions] = useState<UserPermissions>({ role: '', permissions: [] });
-  const [availableModules, setAvailableModules] = useState<DashboardModule[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     workers: null,
     visitors: null,
@@ -339,209 +333,208 @@ export default function DashboardPage() {
     recentActivity: []
   });
 
-  // Função para obter permissões do usuário
-  const getUserPermissions = useCallback((): UserPermissions => {
-    try {
-      const userDataString = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('user='))
-        ?.split('=')[1];
-      
-      if (!userDataString) {
-        return { role: 'viewer', permissions: [] };
-      }
+  // Adicionar estados para controle de debounce e carregamento
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-      const userData = JSON.parse(decodeURIComponent(userDataString));
+  // Função para obter dados do usuário do token JWT - sem dependências externas
+  const getUserDataFromToken = useCallback((): UserData | null => {
+    try {
+      const token = getCookieClient();
+      if (!token || typeof token !== 'string') return null;
       
-      // Definir permissões baseadas na role (pode ser expandido para usar permissões específicas)
-      const rolePermissions: Record<string, string[]> = {
-        admin: [
-          'dashboard:read', 'workers:read', 'documents:read', 'visitors:read', 
-          'providers:read', 'invoices:read', 'templates:read', 'timesheet:read',
-          'workers:create', 'documents:create', 'visitors:create', 'providers:create'
-        ],
-        manager: [
-          'dashboard:read', 'workers:read', 'documents:read', 'visitors:read',
-          'timesheet:read', 'workers:create', 'documents:create'
-        ],
-        user: [
-          'dashboard:read', 'workers:read', 'documents:read', 'timesheet:read'
-        ],
-        administrative: [
-          'dashboard:read', 'workers:read', 'documents:read', 'visitors:read',
-          'providers:read', 'invoices:read', 'templates:read'
-        ],
-        viewer: ['dashboard:read']
-      };
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) return null;
       
+      const payload = JSON.parse(atob(tokenParts[1]));     
       return {
-        role: userData.role || 'viewer',
-        permissions: rolePermissions[userData.role] || rolePermissions.viewer
+        id: payload.id || payload.sub,
+        name: payload.name || 'Usuário',
+        email: payload.email,
+        role: (payload.role || 'USER').toUpperCase() 
       };
     } catch (error) {
-      console.error('Erro ao obter permissões do usuário:', error);
-      return { role: 'viewer', permissions: ['dashboard:read'] };
+      console.error("Erro ao decodificar token:", error);
+      return null;
     }
   }, []);
 
-  // Função para verificar se tem permissão
-  const hasPermission = useCallback((permission: string): boolean => {
-    return userPermissions.permissions.includes(permission) || 
-           userPermissions.role === 'admin';
+  // Função para buscar permissões do usuário do banco de dados - sem dependências externas
+  const fetchUserPermissions = useCallback(async (token: string): Promise<string[]> => {
+    try {
+      const response = await fetch('http://localhost:4000/permissions/me', {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Resposta da API de permissões:', data);
+        
+        if (data.success && Array.isArray(data.permissions)) {
+          return data.permissions;
+        } else if (Array.isArray(data.data)) {
+          return data.data;
+        } else if (Array.isArray(data)) {
+          return data;
+        }
+      } else {
+        console.error('Erro na resposta da API de permissões:', response.status, response.statusText);
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Erro ao buscar permissões do usuário:', error);
+      return [];
+    }
+  }, []);
+
+
+  // Corrigir a função hasPermission
+  const hasPermission = useCallback((permission: string, permissions?: UserPermissions): boolean => {
+    const currentPermissions = permissions || userPermissions;
+    
+    if (currentPermissions.role === 'ADMIN' || currentPermissions.role === 'MANAGER') {
+      return true;
+    }
+    
+    return currentPermissions.permissions.includes(permission);
   }, [userPermissions]);
 
-  
-  // Definir módulos do dashboard
-  const dashboardModules = useMemo((): DashboardModule[] => [
-    {
-      id: 'workers',
-      title: 'Total de Funcionários',
-      icon: UsersIcon,
-      color: 'text-blue-600 dark:text-blue-400',
-      requiredPermissions: ['workers:read'],
-      href: '/pages/worker',
-      isVisible: false
-    },
-    {
-      id: 'documents',
-      title: 'Documentos',
-      icon: DocumentTextIcon,
-      color: 'text-green-600 dark:text-green-400',
-      requiredPermissions: ['documents:read'],
-      href: '/pages/document',
-      isVisible: false
-    },
-    {
-      id: 'visitors',
-      title: 'Visitantes',
-      icon: UserGroupIcon,
-      color: 'text-purple-600 dark:text-purple-400',
-      requiredPermissions: ['visitors:read'],
-      href: '/pages/visitor',
-      isVisible: false
-    },
-    {
-      id: 'providers',
-      title: 'Prestadores',
-      icon: BuildingOfficeIcon,
-      color: 'text-orange-600 dark:text-orange-400',
-      requiredPermissions: ['providers:read'],
-      href: '/pages/provider',
-      isVisible: false
-    },
-    {
-      id: 'invoices',
-      title: 'Faturas',
-      icon: CurrencyDollarIcon,
-      color: 'text-red-600 dark:text-red-400',
-      requiredPermissions: ['invoices:read'],
-      href: '/pages/invoice',
-      isVisible: false
-    },
-    {
-      id: 'templates',
-      title: 'Templates',
-      icon: DocumentTextIcon,
-      color: 'text-indigo-600 dark:text-indigo-400',
-      requiredPermissions: ['templates:read'],
-      href: '/pages/template',
-      isVisible: false
-    },
-    {
-      id: 'timesheet',
-      title: 'Registros de Ponto',
-      icon: ClockIcon,
-      color: 'text-teal-600 dark:text-teal-400',
-      requiredPermissions: ['timesheet:read'],
-      href: '/pages/timeSheet',
-      isVisible: false
-    },
-    {
-      id: 'departments',
-      title: 'Departamentos',
-      icon: BuildingOfficeIcon,
-      color: 'text-pink-600 dark:text-pink-400',
-      requiredPermissions: ['workers:read'],
-      href: '/pages/worker',
-      isVisible: false
-    }
-  ], []);
-
-  // Função para verificar autenticação (mesmo padrão da página de documentos)
-  const checkAuth = useCallback(() => {
-    const hasAuthCookie = document.cookie.includes('session=');
-    if (!hasAuthCookie) {
-      window.location.href = '/auth/login';
-      return false;
-    }
-    return true;
-  }, []);
-
-  // Função para buscar todas as estatísticas (mesmo padrão da página de documentos)
-  const fetchDashboardData = useCallback(async () => {
-    if (!checkAuth()) return;
-
-    setLoading(true);
-    setError('');
-
+  // Função para carregar dados do usuário e permissões
+  const loadUserData = useCallback(async () => {
     try {
-      // Obter permissões do usuário uma única vez
-      const permissions = getUserPermissions();
-      setUserPermissions(permissions);
+      const token = getCookieClient();
+      
+      if (!token) {
+        setUserData(null);
+        setUserPermissions({ role: '', permissions: [] });
+        return;
+      }
+      
+      // Obter dados do usuário do token
+      const userData = getUserDataFromToken();
+      if (!userData) {
+        setUserData(null);
+        setUserPermissions({ role: '', permissions: [] });
+        return;
+      }
+      
+      setUserData(userData);
+      
+      // Buscar permissões do banco de dados
+      if (typeof token !== 'string') {
+        setUserData(null);
+        setUserPermissions({ role: '', permissions: [] });
+        return;
+      }
+      const permissions = await fetchUserPermissions(token);
+      console.log('Permissões obtidas do banco:', permissions);
+      
+      setUserPermissions({
+        role: userData.role,
+        permissions: permissions
+      });
+      
+      // Salvar permissões no localStorage para cache
+      localStorage.setItem('user_permissions', JSON.stringify(permissions));
+      
+    } catch (error) {
+      console.error('Erro ao carregar informações do usuário:', error);
+      setUserData(null);
+      setUserPermissions({ role: '', permissions: [] });
+    }
+  }, [getUserDataFromToken, fetchUserPermissions]);
 
-      // Use as permissões obtidas diretamente, não a referência ao estado
-      const hasPermissionLocal = (permission: string): boolean => {
-        return permissions.permissions.includes(permission) || 
-              permissions.role === 'admin';
+  // Modificar a função fetchDashboardData com todas as dependências
+  const fetchDashboardData = useCallback(async () => {
+    console.log("Iniciando fetchDashboardData");
+    
+    try {
+      const token = getCookieClient();
+      if (!token) {
+        console.log("Redirecionando: Token não encontrado");
+        window.location.href = '/auth/login';
+        return;
+      }
+      
+      setLoading(true);
+      setError('');
+
+      // Carregar dados do usuário e permissões primeiro
+      await loadUserData();
+      
+      // Buscar permissões atualizadas diretamente do cookie, não do estado
+      let currentPermissions: UserPermissions = { role: '', permissions: [] };
+      try {
+        if (token) {
+          const userData = getUserDataFromToken();
+          if (userData) {
+            const fetchedPermissions = await fetchUserPermissions(token as string);
+            currentPermissions = {
+              role: userData.role,
+              permissions: fetchedPermissions
+            };
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao obter permissões:", err);
+      }
+      
+      // Atualizar estado de permissões após busca (única vez)
+      setUserPermissions(currentPermissions);
+      console.log("Permissões atualizadas:", currentPermissions);
+
+      // Criar uma função local para verificar permissões
+      const checkPermission = (permission: string): boolean => {
+        if (currentPermissions.role === 'ADMIN' || currentPermissions.role === 'MANAGER') {
+          return true;
+        }
+        return currentPermissions.permissions.includes(permission);
       };
-
-      // Determinar quais módulos são visíveis com a função local
-      const modules = dashboardModules.map(module => ({
-        ...module,
-        isVisible: module.requiredPermissions.some(perm => hasPermissionLocal(perm)) || permissions.role === 'admin'
-      }));
-      setAvailableModules(modules);
 
       // Buscar dados baseado nas permissões
       const promises: Promise<unknown>[] = [];
       
-      if (hasPermissionLocal('workers:read')) {
+      if (checkPermission('workers:read')) {
         promises.push(getWorkers(), getWorkerStats());
       } else {
         promises.push(Promise.resolve([]), Promise.resolve(null));
       }
-      
-      if (hasPermissionLocal('documents:read')) {
+
+      if (checkPermission('documents:read')) {
         promises.push(getDocuments({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve(null));
       }
       
-      if (hasPermissionLocal('invoices:read')) {
+      if (checkPermission('invoices:read')) {
         promises.push(getInvoices({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve(null));
       }
       
-      if (hasPermissionLocal('templates:read')) {
+      if (checkPermission('templates:read')) {
         promises.push(getTemplates({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve(null));
       }
       
-      if (hasPermissionLocal('timesheet:read')) {
+      if (checkPermission('timesheet:read')) {
         promises.push(getTimeSheets({ limit: 1000 }));
       } else {
         promises.push(Promise.resolve([]));
       }
       
-      if (hasPermissionLocal('visitors:read')) {
+      if (checkPermission('visitors:read')) {
         promises.push(getVisitors({ limit: 100 }), getVisitorStats());
       } else {
         promises.push(Promise.resolve(null), Promise.resolve(null));
       }
       
-      if (hasPermissionLocal('providers:read')) {
+      if (checkPermission('providers:read')) {
         promises.push(getProviders({ limit: 100 }), getProviderStats());
       } else {
         promises.push(Promise.resolve(null), Promise.resolve(null));
@@ -593,7 +586,7 @@ export default function DashboardPage() {
       // Gerar atividade recente baseada nas permissões
       const recentActivity: DashboardStats['recentActivity'] = [];
 
-      if (hasPermissionLocal('workers:read')) {
+      if (checkPermission('workers:read')) {
         workers.slice(0, 3).forEach(worker => {
           recentActivity.push({
             id: `worker-${worker.id}`,
@@ -605,7 +598,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (hasPermissionLocal('visitors:read')) {
+      if (checkPermission('visitors:read')) {
         visitors.slice(0, 2).forEach((visitor: { id: string; name: string; reason: string; createdAt: string }) => {
           recentActivity.push({
             id: `visitor-${visitor.id}`,
@@ -617,7 +610,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (hasPermissionLocal('providers:read')) {
+      if (checkPermission('providers:read')) {
         providers.slice(0, 2).forEach((provider: { id: string; name: string; serviceType?: string; reason?: string; createdAt: string }) => {
           recentActivity.push({
             id: `provider-${provider.id}`,
@@ -629,7 +622,7 @@ export default function DashboardPage() {
         });
       }
 
-      if (hasPermissionLocal('documents:read')) {
+      if (checkPermission('documents:read')) {
         documents.slice(0, 2).forEach((document: { id: string; originalName: string; description?: string; uploadDate: string }) => {
           recentActivity.push({
             id: `document-${document.id}`,
@@ -658,19 +651,21 @@ export default function DashboardPage() {
 
     } catch (err) {
       console.error('Erro ao buscar dados do dashboard:', err);
-      
-      // Verificar se o erro indica falta de autenticação (mesmo padrão da página de documentos)
-      if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
-        window.location.href = '/auth/login';
-        return;
-      }
-      
       setError('Erro ao carregar informações do dashboard');
       toast.error("Erro ao carregar dashboard");
     } finally {
       setLoading(false);
     }
-  }, [checkAuth, dashboardModules, getUserPermissions]); // Adicionamos getUserPermissions, mas mantemos hasPermission fora
+  }, [loadUserData, getUserDataFromToken, fetchUserPermissions]);
+
+  // Modificar o useEffect para evitar múltiplas chamadas
+  useEffect(() => {
+    if (!hasLoaded) {
+      fetchDashboardData().then(() => {
+        setHasLoaded(true);
+      });
+    }
+  }, [fetchDashboardData, hasLoaded]);
 
   // Efeito para verificar o tema
   useEffect(() => {
@@ -699,15 +694,22 @@ export default function DashboardPage() {
     return () => window.removeEventListener('themeToggled', handleThemeChange as EventListener);
   }, []);
 
-  // Efeito para carregar dados quando a página carrega (mesmo padrão da página de documentos)
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
   // Funções de navegação
   const navigateToPage = (page: string) => {
     window.location.href = `/pages/${page}`;
   };
+
+  // Corrigir o debouncedFetchData com todas as dependências
+  const debouncedFetchData = useCallback(async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      await fetchDashboardData();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 1000); // Prevent calls for 1 second
+    }
+  }, [isRefreshing, fetchDashboardData]);
 
   if (loading) {
     return (
@@ -744,16 +746,37 @@ export default function DashboardPage() {
     >
       {/* Page header */}
       <motion.div variants={itemVariants} className="mb-8">
-        <h1 className="text-4xl font-bold text-stone-800 dark:text-white mb-2">
-          Dashboard
-        </h1>
-        <p className="text-stone-500 dark:text-gray-400">
-          Visão geral do sistema Globoo - {userPermissions.role && (
-            <span className="capitalize font-medium text-cyan-600 dark:text-cyan-400">
-              Perfil: {userPermissions.role}
-            </span>
-          )}
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-bold text-stone-800 dark:text-white mb-2">
+              Dashboard
+            </h1>
+            <p className="text-stone-500 dark:text-gray-400">
+              Bem-vindo ao Sistema de Gerenciamento{userData?.name && (
+                <span className="capitalize font-medium text-cyan-600 dark:text-cyan-400 ml-2">
+                  {userData.name}
+                </span>
+              )}
+            </p>
+          </div>
+          
+          {/* Botão de Atualizar */}
+          <Button
+            onClick={debouncedFetchData}
+            disabled={loading || isRefreshing}
+            className="bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700 shadow-lg"
+            size="lg"
+          >
+            {loading || isRefreshing ? (
+              <div className="flex items-center">
+                <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                Atualizando...
+              </div>
+            ) : (
+              'Atualizar Dashboard'
+            )}
+          </Button>
+        </div>
       </motion.div>
 
       {/* Stats Cards - Primeira linha */}
@@ -947,66 +970,8 @@ export default function DashboardPage() {
         </motion.div>
       )}
 
-      {/* Seção de Permissões do Usuário */}
-      <motion.div variants={itemVariants} className="mb-8">
-        <Card className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-              <UserIcon className="h-5 w-5 mr-2" />
-              Suas Permissões de Acesso
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Perfil:</span>
-                  <span className="ml-2 px-3 py-1 bg-cyan-100 dark:bg-cyan-900 text-cyan-800 dark:text-cyan-200 rounded-full text-sm font-medium capitalize">
-                    {userPermissions.role}
-                  </span>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {userPermissions.permissions.length} permissões ativas
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {availableModules.map((module) => (
-                  <div 
-                    key={module.id}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      module.isVisible 
-                        ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20' 
-                        : 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <module.icon className={`h-5 w-5 ${
-                        module.isVisible ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                      }`} />
-                      <div className="flex-1">
-                        <span className={`text-sm font-medium ${
-                          module.isVisible ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'
-                        }`}>
-                          {module.title}
-                        </span>
-                        <div className={`text-xs ${
-                          module.isVisible ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-                        }`}>
-                          {module.isVisible ? 'Acesso liberado' : 'Acesso negado'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
       {/* Mensagem de Acesso Limitado (se aplicável) */}
-      {userPermissions.role === 'viewer' && (
+      {userPermissions.permissions.length === 0 && (
         <motion.div variants={itemVariants} className="mb-8">
           <Card className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
             <CardContent className="p-6">
@@ -1014,11 +979,11 @@ export default function DashboardPage() {
                 <ExclamationTriangleIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
                 <div>
                   <h3 className="text-lg font-medium text-yellow-800 dark:text-yellow-200">
-                    Acesso Limitado
+                    Nenhuma Permissão Encontrada
                   </h3>
                   <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                    Você possui um perfil de visualização limitado. Para acessar mais funcionalidades, 
-                    entre em contato com o administrador do sistema para solicitar permissões adicionais.
+                    Você não possui permissões configuradas no sistema. Entre em contato com o administrador 
+                    para solicitar as permissões necessárias para acessar as funcionalidades do sistema.
                   </p>
                 </div>
               </div>
@@ -1027,27 +992,6 @@ export default function DashboardPage() {
         </motion.div>
       )}
 
-      {/* Botão de Atualizar */}
-      <motion.div 
-        variants={itemVariants} 
-        className="fixed bottom-6 right-6"
-      >
-        <Button
-          onClick={fetchDashboardData}
-          disabled={loading}
-          className="bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700 shadow-lg"
-          size="lg"
-        >
-          {loading ? (
-            <div className="flex items-center">
-              <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-              Atualizando...
-            </div>
-          ) : (
-            'Atualizar Dashboard'
-          )}
-        </Button>
-      </motion.div>
     </motion.div>
   );
 }

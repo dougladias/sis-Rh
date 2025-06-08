@@ -421,7 +421,7 @@ export async function getVisitorPhotoUrl(id: string): Promise<string> {
 /**
  * Busca estatísticas de visitantes
  */
-export async function getVisitorStats(): Promise<VisitorStats | null> {
+export async function getVisitorStats(): Promise<(VisitorStats & { reasons: Array<{ name: string; count: number }> }) | null> {
   try {
     const token = await getAuthToken();
     
@@ -429,15 +429,62 @@ export async function getVisitorStats(): Promise<VisitorStats | null> {
       return null;
     }
     
-    const response = await api.get('/visitors/stats', {
+    // Buscar todos os visitantes em vez de usar o endpoint inexistente
+    const response = await api.get('/visitors', {
       headers: getAuthHeaders(token)
     });
     
-    if (response.data && response.data.success) {
-      return response.data.stats;
+    if (response.data) {
+      // Extrai os visitantes da resposta (trata diferentes formatos de resposta)
+      const visitors = Array.isArray(response.data) ? response.data : 
+                      (response.data.visitors || response.data.data || []);
+      
+      // Calcula as estatísticas básicas
+      const checkedInCount = visitors.filter((v: Visitor) => v.status === VisitorStatus.CHECKED_IN).length;
+      const checkedOutCount = visitors.filter((v: Visitor) => v.status === VisitorStatus.CHECKED_OUT).length;
+      const expectedCount = visitors.filter((v: Visitor) => v.status === VisitorStatus.EXPECTED).length;
+      const cancelledCount = visitors.filter((v: Visitor) => v.status === VisitorStatus.CANCELLED).length;
+      const activeVisitors = checkedInCount; // Assuming active visitors are those currently checked in
+
+      // Calcula visitantes por status
+      const visitorsByStatus: Record<VisitorStatus, number> = 
+        Object.values(VisitorStatus).reduce((acc, status) => {
+          acc[status] = 0;
+          return acc;
+        }, {} as Record<VisitorStatus, number>);
+
+      visitors.forEach((v: Visitor) => {
+        if (v.status && visitorsByStatus.hasOwnProperty(v.status)) {
+          visitorsByStatus[v.status]++;
+        }
+      });
+      
+      // Calcula visitantes por motivo
+      const reasons = visitors.map((visitor: Visitor) => visitor.reason).filter((reason: string | undefined): reason is string => 
+        typeof reason === 'string'
+      );
+      const uniqueReasons: string[] = [...new Set<string>(reasons)];
+      
+      // Corrige o tipo explícito para compatibilidade com o map
+      const reasonsData = uniqueReasons.map((reason: string) => ({
+        name: reason,
+        count: visitors.filter((v: Visitor) => v.reason === reason).length
+      }));
+      
+      // Verifique se o tipo VisitorStats tem a propriedade correta para reasons
+      return {
+        totalVisitors: visitors.length,
+        activeVisitors,
+        checkedInCount,
+        checkedOutCount,
+        expectedCount,
+        cancelledCount,
+        visitorsByStatus,
+        reasons: reasonsData 
+      };
     }
     
-    console.error('Resposta da API não contém estatísticas válidas:', response.data);
+    console.error('Resposta da API não contém dados válidos:', response.data);
     return null;
   } catch (error) {
     console.error('Erro ao buscar estatísticas de visitantes:', error);

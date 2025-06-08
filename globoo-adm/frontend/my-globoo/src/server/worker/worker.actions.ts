@@ -67,26 +67,32 @@ export async function getWorkerStats(): Promise<WorkerStats | null> {
   try {
     const token = await getAuthToken();
     
-    const response = await api.get<Worker[]>('/workers', {
+    const response = await api.get('/workers', {
       headers: getAuthHeaders(token)
     });
 
     if (response.data) {
-      const workers = response.data;
-      const departments = workers.map(worker => worker.department);
-      const uniqueDepartments = [...new Set(departments)];
+      // Verifica se response.data é array ou se contém uma propriedade workers
+      const workers = Array.isArray(response.data) ? response.data : 
+                      (response.data.workers || response.data.data || []);
       
-      const departmentCounts = uniqueDepartments.map(dept => ({
+      // Agora garantimos que workers é um array
+      const departments = workers.map((worker: Worker) => worker.department);
+      const uniqueDepartments = [...new Set(departments)].filter((dept): dept is string => 
+        typeof dept === 'string'
+      );
+      
+      const departmentCounts = uniqueDepartments.map((dept: string) => ({
         name: dept,
-        count: workers.filter(w => w.department === dept).length
+        count: workers.filter((w: Worker) => w.department === dept).length
       }));
       
       return {
         totalWorkers: workers.length,
-        activeWorkers: workers.filter(w => w.status === 'ACTIVE').length,
-        inactiveWorkers: workers.filter(w => w.status === 'INACTIVE').length,
-        terminatedWorkers: workers.filter(w => w.status === 'TERMINATED').length,
-        onVacationWorkers: workers.filter(w => w.status === 'ON_VACATION').length,
+        activeWorkers: workers.filter((w: Worker) => w.status === 'ACTIVE').length,
+        inactiveWorkers: workers.filter((w: Worker) => w.status === 'INACTIVE').length,
+        terminatedWorkers: workers.filter((w: Worker) => w.status === 'TERMINATED').length,
+        onVacationWorkers: workers.filter((w: Worker) => w.status === 'ON_VACATION').length,
         departmentsCount: uniqueDepartments.length,
         departments: departmentCounts
       };

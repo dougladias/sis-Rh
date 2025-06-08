@@ -355,15 +355,69 @@ export async function getProviderStats(): Promise<ProviderStats | null> {
       return null;
     }
     
-    const response = await api.get('/providers/stats', {
+    // Buscar todos os prestadores em vez de usar o endpoint inexistente
+    const response = await api.get('/providers', {
       headers: getAuthHeaders(token)
     });
     
-    if (response.data && response.data.success) {
-      return response.data.stats;
+    if (response.data) {
+      // Extrai os prestadores da resposta (trata diferentes formatos de resposta)
+      const providers = Array.isArray(response.data) ? response.data : 
+                       (response.data.providers || response.data.data || []);
+      
+      // Calcula as estatísticas básicas
+      const checkedInCount = providers.filter((p: Provider) => p.status === ProviderStatus.CHECKED_IN).length;
+      const checkedOutCount = providers.filter((p: Provider) => p.status === ProviderStatus.CHECKED_OUT).length;
+      
+      // Calcula prestadores por tipo de serviço
+      const serviceTypes = providers
+        .map((provider: Provider) => provider.serviceType || 'Não especificado')
+        .filter((serviceType: unknown): serviceType is string => typeof serviceType === 'string');
+        
+      const uniqueServiceTypes: string[] = [...new Set(serviceTypes as string[])];
+      
+      const serviceTypeData = uniqueServiceTypes.map((serviceType: string) => ({
+        name: serviceType,
+        count: providers.filter((p: Provider) => 
+          (p.serviceType || 'Não especificado') === serviceType
+        ).length
+      }));
+      
+      // Calcula prestadores por empresa
+      const companies = providers
+        .map((provider: Provider) => provider.company || 'Não especificado')
+        .filter((company: unknown): company is string => typeof company === 'string');
+        
+      const uniqueCompanies: string[] = [...new Set(companies as string[])];
+      
+      const companyData = uniqueCompanies.map((company: string) => ({
+        name: company,
+        count: providers.filter((p: Provider) => 
+          (p.company || 'Não especificado') === company
+        ).length
+      }));
+      
+      // Ajuste os nomes das propriedades para corresponder ao tipo ProviderStats
+      return {
+        totalProviders: providers.length,
+        checkedInCount,
+        checkedOutCount,
+        activeProviders: checkedInCount,
+        expectedCount: providers.filter((p: Provider) => p.status === ProviderStatus.EXPECTED).length,
+        cancelledCount: providers.filter((p: Provider) => p.status === ProviderStatus.CANCELLED).length,
+        providersByStatus: {
+          [ProviderStatus.EXPECTED]: providers.filter((p: Provider) => p.status === ProviderStatus.EXPECTED).length,
+          [ProviderStatus.CHECKED_IN]: checkedInCount,
+          [ProviderStatus.CHECKED_OUT]: checkedOutCount,
+          [ProviderStatus.CANCELLED]: providers.filter((p: Provider) => p.status === ProviderStatus.CANCELLED).length
+        },
+        // Use os nomes de propriedade corretos conforme definido no tipo ProviderStats
+        serviceTypeData: serviceTypeData, // Corrigido para corresponder ao tipo ProviderStats
+        companyData: companyData          // Corrigido para corresponder ao tipo ProviderStats
+      } as ProviderStats;
     }
     
-    console.error('Resposta da API não contém estatísticas válidas:', response.data);
+    console.error('Resposta da API não contém dados válidos:', response.data);
     return null;
   } catch (error) {
     console.error('Erro ao buscar estatísticas de prestadores:', error);
